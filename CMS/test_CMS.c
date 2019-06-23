@@ -4,6 +4,7 @@
 #include <assert.h>
 
 #include "CMS.h"
+#include "H2ERI_shell_operations.h"
 
 int main(int argc, char **argv)
 {
@@ -11,6 +12,8 @@ int main(int argc, char **argv)
     shell_t *shells;
     
     CMS_read_mol_file(argv[1], &nshell, &shells);
+    
+    H2ERI_rotate_shells(nshell, shells);
     
     CMS_print_shells(nshell, shells);
     
