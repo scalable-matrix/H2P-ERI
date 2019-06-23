@@ -34,7 +34,8 @@ void CMS_print_shells(const int nshell, shell_t *shells);
 //   nshell : Total number of shells
 //   shells : Array, all shells stored in Simint shell structure
 // Output parameter:
-//   <return> : Schwarz screening value
-double CMS_get_Schwarz_scrval(const int nshell, shell_t *shells);
+//   scr_vals : Schwarz screening value of each shell pair
+//   <return> : Maximum Schwarz screening value
+double CMS_get_Schwarz_scrval(const int nshell, shell_t *shells, double *scr_vals);
 
 #endif

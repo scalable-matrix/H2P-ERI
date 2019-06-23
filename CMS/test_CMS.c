@@ -17,14 +17,20 @@ int main(int argc, char **argv)
     
     H2ERI_rotate_shells(nshell, shells);
     
-    //CMS_print_shells(nshell, shells);
-    
-    double scrval = CMS_get_Schwarz_scrval(nshell, shells);
-    printf("scrval = %e\n", scrval);
+    int num_unc_sp;
+    shell_t *unc_sp;
+    double *unc_sp_center;
+    H2ERI_uncontract_shell_pairs(
+        nshell, shells, 1e-10, 
+        &num_unc_sp, &unc_sp, &unc_sp_center
+    );
     
     CMS_destroy_shells(nshell, shells);
+    CMS_destroy_shells(num_unc_sp * 2, unc_sp);
     
     free(shells);
+    free(unc_sp);
+    free(unc_sp_center);
     
     simint_finalize();
     

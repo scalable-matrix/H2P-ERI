@@ -142,7 +142,7 @@ void CMS_print_shells(const int nshell, shell_t *shells)
 }
 
 // Get the Schwarz screening value from a given set of shells
-double CMS_get_Schwarz_scrval(const int nshell, shell_t *shells)
+double CMS_get_Schwarz_scrval(const int nshell, shell_t *shells, double *scr_vals)
 {
     // 1. Calculate the size of each shell and prepare Simint buffer
     int *shell_bf_num = (int*) malloc(sizeof(int) * nshell);
@@ -163,7 +163,7 @@ double CMS_get_Schwarz_scrval(const int nshell, shell_t *shells)
     // 2. Calculate (MN|MN) and find the Schwarz screening value
     double global_max_scrval = 0.0;
     #pragma omp parallel
-	{    
+    {    
         struct simint_multi_shellpair MN_pair;
         simint_initialize_multi_shellpair(&MN_pair);
         
@@ -171,18 +171,18 @@ double CMS_get_Schwarz_scrval(const int nshell, shell_t *shells)
         double *ERI_mem  = SIMINT_ALLOC(ERI_msize);
         assert(work_mem != NULL && ERI_mem != NULL);
         
-		#pragma omp for schedule(dynamic) reduction(max:global_max_scrval)
-		for (int M = 0; M < nshell; M++)
-		{
-			int dimM = shell_bf_num[M];
-			for (int N = 0; N < nshell; N++)
-			{
-				int dimN = shell_bf_num[N];
-				
+        #pragma omp for schedule(dynamic) reduction(max:global_max_scrval)
+        for (int M = 0; M < nshell; M++)
+        {
+            int dimM = shell_bf_num[M];
+            for (int N = 0; N < nshell; N++)
+            {
+                int dimN = shell_bf_num[N];
+                
                 simint_create_multi_shellpair(1, &shells[M], 1, &shells[N], &MN_pair, 0);
                 int ERI_size = simint_compute_eri(&MN_pair, &MN_pair, 0.0, work_mem, ERI_mem);
                 if (ERI_size <= 0) continue;
-				
+                
                 int ld_MNM_M = (dimM * dimN * dimM + dimM);
                 int ld_NM_1  = (dimN * dimM + 1);
                 double max_val = 0.0;
@@ -196,13 +196,15 @@ double CMS_get_Schwarz_scrval(const int nshell, shell_t *shells)
                     }
                 }
                 global_max_scrval = MAX(global_max_scrval, max_val);
-			}
-		}
+                scr_vals[M * nshell + N] = max_val;
+                scr_vals[N * nshell + M] = max_val;
+            }
+        }
         
         SIMINT_FREE(ERI_mem);
         SIMINT_FREE(work_mem);
         simint_free_multi_shellpair(&MN_pair);
-	}
+    }
     
     free(shell_bf_num);
     return global_max_scrval;
