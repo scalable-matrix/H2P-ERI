@@ -82,7 +82,7 @@ void H2ERI_rotate_shells(const int nshell, shell_t *shells)
 
 // Fully uncontract all shells and screen uncontracted shell pairs
 void H2ERI_uncontract_shell_pairs(
-    const int nshell, shell_t *shells, const double scr_tol, 
+    const int nshell, const shell_t *shells, const double scr_tol, 
     int *num_unc_sp_, shell_t **unc_sp_, double **unc_sp_center_
 )
 {
@@ -183,8 +183,8 @@ void H2ERI_uncontract_shell_pairs(
             cidx0++;
             cidx1++;
             cidx2++;
-        }
-    }
+        }  // End of j loop
+    }  // End of i loop
     
     // 3. Free temporary arrays and return
     *num_unc_sp_ = num_unc_sp;
@@ -196,3 +196,175 @@ void H2ERI_uncontract_shell_pairs(
     free(shells_unc);
     free(shells_unc_idx);
 }
+
+// Estimate the extent of Gaussian function 
+//       coef * exp(-alpha * x^2) * x^am
+// Input parameters:
+//   alpha, coef, am : Gaussian function parameter
+//   tol : Tolerance of extent
+// Output parameter:
+//   <return> : Estimated extent of given Gaussian function
+#define Gaussian_tol(x) (coef * exp(-alpha * (x) * (x)) * pow((x), am) - tol)
+double H2ERI_calc_Gaussian_extent(
+    const double alpha, const double coef, 
+    const int _am,      const double tol
+)
+{
+    double am = (double) _am;
+    double lower = 0.0, upper = 20.0;
+    
+    // If am > 0, the maximum of Gaussian is obtained at x = sqrt(am / 2 / alpha)
+    if (_am > 0) 
+    {
+        lower = sqrt(am * 0.5 / alpha);
+        upper = 10.0 * lower;
+    }
+    
+    if (Gaussian_tol(lower) <= 1e-8 * tol) return 0.0;
+    while (Gaussian_tol(upper) > 0) upper *= 2.0;
+    
+    double extent   = (upper + lower) * 0.5;
+    double G_extent = Gaussian_tol(extent);
+    while (fabs(G_extent) > 2e-16)
+    {
+        if (G_extent > 0.0) lower = extent; 
+        else                upper = extent;
+        extent   = (upper + lower) * 0.5;
+        G_extent = Gaussian_tol(extent);
+    }
+    
+    return extent;
+}
+
+// Calculate the extent of each shell pair
+void H2ERI_calc_shell_pair_extents(
+    const int num_sp, const shell_t *sp, 
+    const double ext_tol, double *sp_extent
+)
+{
+    int max_nprim = 0;
+    for (int i = 0; i < num_sp * 2; i++)
+        max_nprim = MAX(max_nprim, sp[i].nprim);
+    size_t tmp_msize = sizeof(double) * max_nprim * max_nprim;
+    double *extent_tmp = (double *) malloc(tmp_msize);
+    double *center_tmp = (double *) malloc(tmp_msize * 3);
+    double *upper = (double *) malloc(tmp_msize * 3);
+    double *lower = (double *) malloc(tmp_msize * 3);
+    assert(extent_tmp != NULL && center_tmp != NULL);
+    assert(upper != NULL && lower != NULL);
+    
+    for (int i = 0; i < num_sp; i++)
+    {
+        int i20 = i * 2;
+        int i21 = i * 2 + 1;
+        int am1 = sp[i20].am;
+        int am2 = sp[i21].am;
+        int nprim1  = sp[i20].nprim;
+        int nprim2  = sp[i21].nprim;
+        int nprim12 = nprim1 * nprim2;
+        double x1 = sp[i20].x;
+        double y1 = sp[i20].y;
+        double z1 = sp[i20].z;
+        double x2 = sp[i21].x;
+        double y2 = sp[i21].y;
+        double z2 = sp[i21].z;
+        double dx = x1 - x2;
+        double dy = y1 - y2;
+        double dz = z1 - z2;
+        double *alpha1 = sp[i20].alpha;
+        double *alpha2 = sp[i21].alpha;
+        double *coef1  = sp[i20].coef;
+        double *coef2  = sp[i21].coef;
+        double tol_i = ext_tol / (double) nprim12;
+        double r12   = dx * dx + dy * dy + dz * dz;
+        
+        // 1. Calculate the center and extent of each primitive function pair
+        int j_idx = 0;
+        for (int j1 = 0; j1 < nprim1; j1++)
+        {
+            double aj1 = alpha1[j1];
+            for (int j2 = 0; j2 < nprim2; j2++)
+            {
+                double aj2  = alpha2[j2];
+                double aj12 = aj1 + aj2;
+                double cj12 = coef1[j1] * coef2[j2];
+                double exp_c = (aj1 * aj2 / aj12) * r12;
+                double coef  = cj12 * exp(-exp_c);
+                double *center_j = center_tmp + j_idx * 3;
+                center_j[0] = (aj1 * x1 + aj2 * x2) / aj12;
+                center_j[1] = (aj1 * y1 + aj2 * y2) / aj12;
+                center_j[2] = (aj1 * z1 + aj2 * z2) / aj12;
+                extent_tmp[j_idx] = H2ERI_calc_Gaussian_extent(aj12, coef, am1 + am2, tol_i);
+                j_idx++;
+            }
+        }
+        
+        // 2. Find a large box to cover all extents
+        double d12 = sqrt(r12);
+        if (d12 < 5e-16)
+        {
+            double max_ext = 0.0;
+            for (int j = 0; j < nprim12; j++)
+                max_ext = MAX(max_ext, extent_tmp[j]);
+            sp_extent[i] = max_ext;
+        } else {
+            dx /= d12;  dy /= d12;  dz /= d12;
+            for (int j = 0; j < nprim12; j++)
+            {
+                double extent_j  = extent_tmp[j];
+                double *center_j = center_tmp + j * 3;
+                double *upper_j  = upper + j * 3;
+                double *lower_j  = lower + j * 3;
+                upper_j[0] = center_j[0] + extent_j * dx;
+                upper_j[1] = center_j[1] + extent_j * dy;
+                upper_j[2] = center_j[2] + extent_j * dz;
+                lower_j[0] = center_j[0] - extent_j * dx;
+                lower_j[1] = center_j[1] - extent_j * dy;
+                lower_j[2] = center_j[2] - extent_j * dz;
+            }
+            // j1's upper bound of extent has the largest distance to coord2
+            // j2's lower bound of extent has the largest distance to coord1
+            int j1 = 0, j2 = 0;
+            double jc1_max = 0.0, jc2_max = 0.0;
+            for (int j = 0; j < nprim12; j++)
+            {
+                double *upper_j = upper + j * 3;
+                double *lower_j = lower + j * 3;
+                
+                dx = upper_j[0] - x2;
+                dy = upper_j[1] - y2;
+                dz = upper_j[2] - z2;
+                double dist_j_c1 = sqrt(dx * dx + dy * dy + dz * dz);
+                if (dist_j_c1 > jc1_max)
+                {
+                    jc1_max = dist_j_c1;
+                    j1 = j;
+                }
+                
+                dx = lower_j[0] - x1;
+                dy = lower_j[1] - y1;
+                dz = lower_j[2] - z1;
+                double dist_j_c2 = sqrt(dx * dx + dy * dy + dz * dz);
+                if (dist_j_c2 > jc2_max)
+                {
+                    jc2_max = dist_j_c2;
+                    j2 = j;
+                }
+            }
+            j1 = 0; j2 = 0;
+            double *upper_j1 = upper + j1 * 3;
+            double *lower_j2 = lower + j2 * 3;
+            dx = upper_j1[0] - lower_j2[0];
+            dy = upper_j1[1] - lower_j2[1];
+            dz = upper_j1[2] - lower_j2[2];
+            sp_extent[i] = sqrt(dx * dx + dy * dy + dz * dz) * 0.5;
+        }  // End of "if (d12 < 1e-15)"
+    }  // End of i loop
+    
+    free(lower);
+    free(upper);
+    free(center_tmp);
+    free(extent_tmp);
+}
+
+
