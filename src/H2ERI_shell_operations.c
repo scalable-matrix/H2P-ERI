@@ -274,3 +274,32 @@ void H2ERI_calc_unc_sp_extents(H2ERI_t h2eri)
     }
 }
 
+// Calculate the AM, basis function indices information of shells and shell pairs 
+void H2ERI_calc_bf_sidx(H2ERI_t h2eri)
+{
+    int nshell      = h2eri->nshell;
+    int num_unc_sp  = h2eri->num_unc_sp;
+    shell_t *shells = h2eri->shells;
+    shell_t *unc_sp = h2eri->unc_sp;
+    
+    h2eri->shell_bf_sidx  = (int *) malloc(sizeof(int) * (nshell + 1));
+    h2eri->unc_sp_bf_sidx = (int *) malloc(sizeof(int) * (num_unc_sp + 1));
+    assert(h2eri->shell_bf_sidx != NULL && h2eri->unc_sp_bf_sidx != NULL);
+    
+    h2eri->shell_bf_sidx[0] = 0;
+    for (int i = 0; i < nshell; i++)
+    {
+        int nbf_i = NCART(shells[i].am);
+        h2eri->shell_bf_sidx[i + 1] = h2eri->shell_bf_sidx[i] + nbf_i;
+    }
+    
+    h2eri->unc_sp_bf_sidx[0] = 0;
+    for (int i = 0; i < num_unc_sp; i++)
+    {
+        int nbf_i20 = NCART(unc_sp[i * 2].am);
+        int nbf_i21 = NCART(unc_sp[i * 2 + 1].am);
+        int nbf_i   = nbf_i20 * nbf_i21;
+        h2eri->unc_sp_bf_sidx[i + 1] = h2eri->unc_sp_bf_sidx[i] + nbf_i;
+    }
+}
+
