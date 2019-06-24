@@ -247,134 +247,30 @@ void H2ERI_calc_unc_sp_extents(H2ERI_t h2eri)
     h2eri->unc_sp_extent = (double *) malloc(sizeof(double) * h2eri->num_unc_sp);
     assert(h2eri->unc_sp_extent != NULL);
     
-    int num_sp = h2eri->num_unc_sp;
-    shell_t *sp = h2eri->unc_sp;
+    int num_unc_sp = h2eri->num_unc_sp;
+    shell_t *unc_sp = h2eri->unc_sp;
     double ext_tol = h2eri->ext_tol;
-    double *sp_extent = h2eri->unc_sp_extent;
-    
-    int max_nprim = 0;
-    for (int i = 0; i < num_sp * 2; i++)
-        max_nprim = MAX(max_nprim, sp[i].nprim);
-    size_t tmp_msize = sizeof(double) * max_nprim * max_nprim;
-    double *extent_tmp = (double *) malloc(tmp_msize);
-    double *center_tmp = (double *) malloc(tmp_msize * 3);
-    double *upper = (double *) malloc(tmp_msize * 3);
-    double *lower = (double *) malloc(tmp_msize * 3);
-    assert(extent_tmp != NULL && center_tmp != NULL);
-    assert(upper != NULL && lower != NULL);
-    
-    for (int i = 0; i < num_sp; i++)
-    {
-        int i20 = i * 2;
-        int i21 = i * 2 + 1;
-        int am1 = sp[i20].am;
-        int am2 = sp[i21].am;
-        int nprim1  = sp[i20].nprim;
-        int nprim2  = sp[i21].nprim;
-        int nprim12 = nprim1 * nprim2;
-        double x1 = sp[i20].x;
-        double y1 = sp[i20].y;
-        double z1 = sp[i20].z;
-        double x2 = sp[i21].x;
-        double y2 = sp[i21].y;
-        double z2 = sp[i21].z;
-        double dx = x1 - x2;
-        double dy = y1 - y2;
-        double dz = z1 - z2;
-        double *alpha1 = sp[i20].alpha;
-        double *alpha2 = sp[i21].alpha;
-        double *coef1  = sp[i20].coef;
-        double *coef2  = sp[i21].coef;
-        double tol_i = ext_tol / (double) nprim12;
-        double r12   = dx * dx + dy * dy + dz * dz;
-        
-        // 1. Calculate the center and extent of each primitive function pair
-        int j_idx = 0;
-        for (int j1 = 0; j1 < nprim1; j1++)
-        {
-            double aj1 = alpha1[j1];
-            for (int j2 = 0; j2 < nprim2; j2++)
-            {
-                double aj2  = alpha2[j2];
-                double aj12 = aj1 + aj2;
-                double cj12 = coef1[j1] * coef2[j2];
-                double exp_c = (aj1 * aj2 / aj12) * r12;
-                double coef  = cj12 * exp(-exp_c);
-                double *center_j = center_tmp + j_idx * 3;
-                center_j[0] = (aj1 * x1 + aj2 * x2) / aj12;
-                center_j[1] = (aj1 * y1 + aj2 * y2) / aj12;
-                center_j[2] = (aj1 * z1 + aj2 * z2) / aj12;
-                extent_tmp[j_idx] = H2ERI_calc_Gaussian_extent(aj12, coef, am1 + am2, tol_i);
-                j_idx++;
-            }
-        }
-        
-        // 2. Find a large box to cover all extents
-        double d12 = sqrt(r12);
-        if (d12 < 5e-16)
-        {
-            double max_ext = 0.0;
-            for (int j = 0; j < nprim12; j++)
-                max_ext = MAX(max_ext, extent_tmp[j]);
-            sp_extent[i] = max_ext;
-        } else {
-            dx /= d12;  dy /= d12;  dz /= d12;
-            for (int j = 0; j < nprim12; j++)
-            {
-                double extent_j  = extent_tmp[j];
-                double *center_j = center_tmp + j * 3;
-                double *upper_j  = upper + j * 3;
-                double *lower_j  = lower + j * 3;
-                upper_j[0] = center_j[0] + extent_j * dx;
-                upper_j[1] = center_j[1] + extent_j * dy;
-                upper_j[2] = center_j[2] + extent_j * dz;
-                lower_j[0] = center_j[0] - extent_j * dx;
-                lower_j[1] = center_j[1] - extent_j * dy;
-                lower_j[2] = center_j[2] - extent_j * dz;
-            }
-            // j1's upper bound of extent has the largest distance to coord2
-            // j2's lower bound of extent has the largest distance to coord1
-            int j1 = 0, j2 = 0;
-            double jc1_max = 0.0, jc2_max = 0.0;
-            for (int j = 0; j < nprim12; j++)
-            {
-                double *upper_j = upper + j * 3;
-                double *lower_j = lower + j * 3;
-                
-                dx = upper_j[0] - x2;
-                dy = upper_j[1] - y2;
-                dz = upper_j[2] - z2;
-                double dist_j_c1 = sqrt(dx * dx + dy * dy + dz * dz);
-                if (dist_j_c1 > jc1_max)
-                {
-                    jc1_max = dist_j_c1;
-                    j1 = j;
-                }
-                
-                dx = lower_j[0] - x1;
-                dy = lower_j[1] - y1;
-                dz = lower_j[2] - z1;
-                double dist_j_c2 = sqrt(dx * dx + dy * dy + dz * dz);
-                if (dist_j_c2 > jc2_max)
-                {
-                    jc2_max = dist_j_c2;
-                    j2 = j;
-                }
-            }
-            j1 = 0; j2 = 0;
-            double *upper_j1 = upper + j1 * 3;
-            double *lower_j2 = lower + j2 * 3;
-            dx = upper_j1[0] - lower_j2[0];
-            dy = upper_j1[1] - lower_j2[1];
-            dz = upper_j1[2] - lower_j2[2];
-            sp_extent[i] = sqrt(dx * dx + dy * dy + dz * dz) * 0.5;
-        }  // End of "if (d12 < 1e-15)"
-    }  // End of i loop
-    
-    free(lower);
-    free(upper);
-    free(center_tmp);
-    free(extent_tmp);
-}
+    double *unc_sp_extent = h2eri->unc_sp_extent;
 
+    for (int i = 0; i < num_unc_sp; i++)
+    {
+        int i20  = i * 2;
+        int i21  = i * 2 + 1;
+        int am12 = unc_sp[i20].am + unc_sp[i21].am;
+        int nprim12    = unc_sp[i20].nprim * unc_sp[i21].nprim;
+        double dx      = unc_sp[i20].x - unc_sp[i21].x;
+        double dy      = unc_sp[i20].y - unc_sp[i21].y;
+        double dz      = unc_sp[i20].z - unc_sp[i21].z;
+        double coef12  = unc_sp[i20].coef[0] * unc_sp[i21].coef[0];
+        double alpha1  = unc_sp[i20].alpha[0];
+        double alpha2  = unc_sp[i21].alpha[0];
+        double tol_i   = ext_tol / (double) nprim12;
+        double r12     = dx * dx + dy * dy + dz * dz;
+        double alpha12 = alpha1 + alpha2;
+        double exp_c   = (alpha1 * alpha2 / alpha12) * r12;
+        double coef    = coef12 * exp(-exp_c);
+        
+        unc_sp_extent[i] = H2ERI_calc_Gaussian_extent(alpha12, coef, am12, tol_i);
+    }
+}
 
