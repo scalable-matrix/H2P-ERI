@@ -6,11 +6,13 @@
 
 #include "mkl.h"
 
-#include "CMS.h"
+#include "H2ERI_typedef.h"
 
 // Rotate shell coordinates for better hierarchical partitioning
-void H2ERI_rotate_shells(const int nshell, shell_t *shells)
+void H2ERI_rotate_shells(H2ERI_t h2eri)
 {
+    const int nshell = h2eri->nshell;
+    shell_t *shells  = h2eri->shells;
     size_t col_msize = sizeof(double) * nshell;
     double center[3] = {0.0, 0.0, 0.0};
     double eigval[3], eigvec[9];
@@ -81,11 +83,12 @@ void H2ERI_rotate_shells(const int nshell, shell_t *shells)
 }
 
 // Fully uncontract all shells and screen uncontracted shell pairs
-void H2ERI_uncontract_shell_pairs(
-    const int nshell, const shell_t *shells, const double scr_tol, 
-    int *num_unc_sp_, shell_t **unc_sp_, double **unc_sp_center_
-)
+void H2ERI_uncontract_shell_pairs(H2ERI_t h2eri)
 {
+    int     nshell  = h2eri->nshell;
+    shell_t *shells = h2eri->shells;
+    double  scr_tol = h2eri->scr_tol;
+    
     // 1. Uncontract all shells
     int nshell_unc = 0;
     for (int i = 0; i < nshell; i++) nshell_unc += shells[i].nprim;
@@ -131,9 +134,14 @@ void H2ERI_uncontract_shell_pairs(
         for (int j = i; j < nshell_unc; j++)
             if (src_vals_row[j] >= scr_thres) num_unc_sp++;
     }
-    double *unc_sp_center = (double *) malloc(sizeof(double) * num_unc_sp * 3);
-    shell_t *unc_sp = (shell_t *) malloc(sizeof(shell_t) * num_unc_sp * 2);
-    assert(unc_sp_center != NULL && unc_sp != NULL);
+    
+    h2eri->num_unc_sp = num_unc_sp;
+    h2eri->unc_sp_center = (double *) malloc(sizeof(double) * num_unc_sp * 3);
+    h2eri->unc_sp = (shell_t *) malloc(sizeof(shell_t) * num_unc_sp * 2);
+    assert(h2eri->unc_sp_center != NULL && h2eri->unc_sp != NULL);
+    double  *unc_sp_center = h2eri->unc_sp_center;
+    shell_t *unc_sp = h2eri->unc_sp;
+    
     for (int i = 0; i < num_unc_sp * 2; i++)
     {
         simint_initialize_shell(&unc_sp[i]);
@@ -186,10 +194,7 @@ void H2ERI_uncontract_shell_pairs(
         }  // End of j loop
     }  // End of i loop
     
-    // 3. Free temporary arrays and return
-    *num_unc_sp_ = num_unc_sp;
-    *unc_sp_ = unc_sp;
-    *unc_sp_center_ = unc_sp_center;
+    // 3. Free temporary arrays
     free(scr_vals);
     for (int i = 0; i < nshell_unc; i++)
         simint_free_shell(&shells_unc[i]);
@@ -237,11 +242,16 @@ double H2ERI_calc_Gaussian_extent(
 }
 
 // Calculate the extent of each shell pair
-void H2ERI_calc_shell_pair_extents(
-    const int num_sp, const shell_t *sp, 
-    const double ext_tol, double *sp_extent
-)
+void H2ERI_calc_unc_sp_extents(H2ERI_t h2eri)
 {
+    h2eri->unc_sp_extent = (double *) malloc(sizeof(double) * h2eri->num_unc_sp);
+    assert(h2eri->unc_sp_extent != NULL);
+    
+    int num_sp = h2eri->num_unc_sp;
+    shell_t *sp = h2eri->unc_sp;
+    double ext_tol = h2eri->ext_tol;
+    double *sp_extent = h2eri->unc_sp_extent;
+    
     int max_nprim = 0;
     for (int i = 0; i < num_sp * 2; i++)
         max_nprim = MAX(max_nprim, sp[i].nprim);

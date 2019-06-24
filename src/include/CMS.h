@@ -7,7 +7,7 @@ typedef struct simint_shell           shell_t;
 typedef struct simint_multi_shellpair multi_sp_t;
 
 #define NCART(am) ((am>=0)?((((am)+2)*((am)+1))>>1):0)
-#define MAX(a, b) ((a)>(b)?(a):(b))
+#define MAX(a, b)  ((a) > (b) ? (a) : (b))
 
 // Read all shell information in a .mol file and normalize all these shells
 // Input parameter:

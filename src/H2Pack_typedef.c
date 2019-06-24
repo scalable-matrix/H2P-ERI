@@ -31,6 +31,7 @@ void H2P_init(H2Pack_t *h2pack_, const int dim, const int QR_stop_type, void *QR
     h2pack->parent        = NULL;
     h2pack->children      = NULL;
     h2pack->cluster       = NULL;
+    h2pack->mat_cluster   = NULL;
     h2pack->n_child       = NULL;
     h2pack->node_level    = NULL;
     h2pack->node_height   = NULL;
@@ -73,6 +74,7 @@ void H2P_destroy(H2Pack_t h2pack)
     free(h2pack->parent);
     free(h2pack->children);
     free(h2pack->cluster);
+    free(h2pack->mat_cluster);
     free(h2pack->n_child);
     free(h2pack->node_level);
     free(h2pack->node_height);

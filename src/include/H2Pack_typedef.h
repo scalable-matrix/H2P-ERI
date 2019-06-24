@@ -1,6 +1,7 @@
 #ifndef __H2PACK_TYPEDEF_H__
 #define __H2PACK_TYPEDEF_H__
 
+#include "H2Pack_utils.h"
 #include "H2Pack_config.h"
 #include "H2Pack_aux_structs.h"
 
@@ -52,6 +53,7 @@ struct H2Pack
     int    *parent;             // Size n_node, parent index of each node
     int    *children;           // Size n_node * max_child, indices of a node's children nodes
     int    *cluster;            // Size n_node * 2, start and end (included) indices of points belong to each node
+    int    *mat_cluster;        // Size n_node * 2, start and end (included) indices of matvec vector elements belong to each node
     int    *n_child;            // Size n_node, number of children nodes of each node
     int    *node_level;         // Size n_node, level of each node
     int    *node_height;        // Size n_node, height of each node

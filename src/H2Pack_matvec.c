@@ -28,7 +28,7 @@ void H2P_matvec_upward_sweep(H2Pack_t h2pack, const DTYPE *x)
     int *height_n_node = h2pack->height_n_node;
     int *node_level    = h2pack->node_level;
     int *height_nodes  = h2pack->height_nodes;
-    int *cluster       = h2pack->cluster;
+    int *cluster       = h2pack->mat_cluster;
     
     // 1. Initialize y0 on the first run
     if (h2pack->y0 == NULL)
@@ -190,7 +190,7 @@ void H2P_matvec_intermediate_sweep_AOT(H2Pack_t h2pack, const DTYPE *x)
     int    n_r_adm_pair  = h2pack->n_r_adm_pair;
     int    *r_adm_pairs  = h2pack->r_adm_pairs;
     int    *node_level   = h2pack->node_level;
-    int    *cluster      = h2pack->cluster;
+    int    *cluster      = h2pack->mat_cluster;
     int    *node_n_r_adm = h2pack->node_n_r_adm;
     int    *B_nrow       = h2pack->B_nrow;
     int    *B_ncol       = h2pack->B_ncol;
@@ -363,7 +363,7 @@ void H2P_matvec_intermediate_sweep_JIT(H2Pack_t h2pack, const DTYPE *x)
     int    n_r_adm_pair  = h2pack->n_r_adm_pair;
     int    *r_adm_pairs  = h2pack->r_adm_pairs;
     int    *node_level   = h2pack->node_level;
-    int    *cluster      = h2pack->cluster;
+    int    *cluster      = h2pack->mat_cluster;
     int    *node_n_r_adm = h2pack->node_n_r_adm;
     int    *B_nrow       = h2pack->B_nrow;
     int    *B_ncol       = h2pack->B_ncol;
@@ -549,7 +549,7 @@ void H2P_matvec_downward_sweep(H2Pack_t h2pack, const DTYPE *x)
     int *n_child        = h2pack->n_child;
     int *level_n_node   = h2pack->level_n_node;
     int *level_nodes    = h2pack->level_nodes;
-    int *cluster        = h2pack->cluster;
+    int *cluster        = h2pack->mat_cluster;
     H2P_dense_mat_t *U  = h2pack->U;
     H2P_dense_mat_t *y1 = h2pack->y1;
     
@@ -638,7 +638,7 @@ void H2P_matvec_dense_blocks_AOT(H2Pack_t h2pack, const DTYPE *x)
     int    n_r_inadm_pair = h2pack->n_r_inadm_pair;
     int    *r_inadm_pairs = h2pack->r_inadm_pairs;
     int    *leaf_nodes    = h2pack->height_nodes;
-    int    *cluster       = h2pack->cluster;
+    int    *cluster       = h2pack->mat_cluster;
     int    *D_nrow        = h2pack->D_nrow;
     int    *D_ncol        = h2pack->D_ncol;
     size_t *D_ptr         = h2pack->D_ptr;
@@ -747,7 +747,7 @@ void H2P_matvec_dense_blocks_JIT(H2Pack_t h2pack, const DTYPE *x)
     int    n_r_inadm_pair  = h2pack->n_r_inadm_pair;
     int    *r_inadm_pairs  = h2pack->r_inadm_pairs;
     int    *leaf_nodes     = h2pack->height_nodes;
-    int    *cluster        = h2pack->cluster;
+    int    *cluster        = h2pack->mat_cluster;
     int    *D_nrow         = h2pack->D_nrow;
     int    *D_ncol         = h2pack->D_ncol;
     DTYPE  *coord          = h2pack->coord;

@@ -494,6 +494,7 @@ void H2P_partition_points(H2Pack_t h2pack, const int n_point, const DTYPE *coord
     h2pack->parent        = malloc(sizeof(int)   * n_node);
     h2pack->children      = malloc(sizeof(int)   * n_node * max_child);
     h2pack->cluster       = malloc(sizeof(int)   * n_node * 2);
+    h2pack->mat_cluster   = malloc(sizeof(int)   * n_node * 2);
     h2pack->n_child       = malloc(sizeof(int)   * n_node);
     h2pack->node_level    = malloc(sizeof(int)   * n_node);
     h2pack->node_height   = malloc(sizeof(int)   * n_node);
@@ -507,7 +508,7 @@ void H2P_partition_points(H2Pack_t h2pack, const int n_point, const DTYPE *coord
     assert(h2pack->node_level    != NULL && h2pack->node_height   != NULL);
     assert(h2pack->level_n_node  != NULL && h2pack->level_nodes   != NULL);
     assert(h2pack->height_n_node != NULL && h2pack->height_nodes  != NULL);
-    assert(h2pack->enbox         != NULL);
+    assert(h2pack->enbox         != NULL && h2pack->mat_cluster   != NULL);
     partition_vars.curr_leaf_idx = 0;
     memset(h2pack->level_n_node,  0, sizeof(int) * max_level);
     memset(h2pack->height_n_node, 0, sizeof(int) * max_level);
