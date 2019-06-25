@@ -9,6 +9,17 @@
 #include "H2Pack_partition.h"
 
 // Partition uncontracted shell pair centers (as points) for H2 tree
+// Input parameters:
+//   h2eri->num_unc_sp    : Number of fully uncontracted shell pairs (FUSP)
+//   h2eri->unc_sp_center : Array, size 3 * num_unc_sp, centers of FUSP
+//   h2eri->unc_sp_extent : Array, size num_unc_sp, extents of FUSP
+//   max_leaf_points      : Maximum number of point in a leaf node's box. If <= 0, 
+//                          will use 300.
+//   max_leaf_size        : Maximum size of a leaf node's box. 
+// Output parameter:
+//   h2eri->h2pack        : H2Pack structure with point partitioning info
+//   h2eri->unc_sp_center : Array, size 3 * num_unc_sp, sorted centers of FUSP
+//   h2eri->unc_sp_extent : Array, size num_unc_sp, sorted extents of FUSP
 void H2ERI_partition_unc_sp_centers(H2ERI_t h2eri, int max_leaf_points, double max_leaf_size)
 {
     // 1. Partition uncontracted shell pair centers
@@ -50,7 +61,51 @@ void H2ERI_partition_unc_sp_centers(H2ERI_t h2eri, int max_leaf_points, double m
     h2eri->unc_sp_extent = unc_sp_extent_new;
 }
 
-// Calculate the extents of shell pairs in each H2 box
+// Calculate the basis function indices information of shells and shell pairs 
+// Input parameters:
+//   h2eri->nshell     : Number of original shells 
+//   h2eri->shells     : Array, size nshell, original shells
+//   h2eri->num_unc_sp : Number of shell pairs
+//   h2eri->unc_sp     : Array, size num_sp * 2, each row is a shell pair
+// Output parameters:
+//   h2eri->shell_bf_sidx  : Array, size nshell+1, indices of each shell's first basis function
+//   h2eri->unc_sp_bf_sidx : Array, size num_unc_sp+1, indices of each FUSP first basis function 
+void H2ERI_calc_bf_sidx(H2ERI_t h2eri)
+{
+    int nshell      = h2eri->nshell;
+    int num_unc_sp  = h2eri->num_unc_sp;
+    shell_t *shells = h2eri->shells;
+    shell_t *unc_sp = h2eri->unc_sp;
+    
+    h2eri->shell_bf_sidx  = (int *) malloc(sizeof(int) * (nshell + 1));
+    h2eri->unc_sp_bf_sidx = (int *) malloc(sizeof(int) * (num_unc_sp + 1));
+    assert(h2eri->shell_bf_sidx != NULL && h2eri->unc_sp_bf_sidx != NULL);
+    
+    h2eri->shell_bf_sidx[0] = 0;
+    for (int i = 0; i < nshell; i++)
+    {
+        int nbf_i = NCART(shells[i].am);
+        h2eri->shell_bf_sidx[i + 1] = h2eri->shell_bf_sidx[i] + nbf_i;
+    }
+    
+    h2eri->unc_sp_bf_sidx[0] = 0;
+    for (int i = 0; i < num_unc_sp; i++)
+    {
+        int nbf_i20 = NCART(unc_sp[i * 2].am);
+        int nbf_i21 = NCART(unc_sp[i * 2 + 1].am);
+        int nbf_i   = nbf_i20 * nbf_i21;
+        h2eri->unc_sp_bf_sidx[i + 1] = h2eri->unc_sp_bf_sidx[i] + nbf_i;
+    }
+}
+
+// Calculate the max extent of shell pairs in each H2 box
+// Input parameters:
+//   h2eri->h2pack        : H2 tree partitioning info
+//   h2eri->num_unc_sp    : Number of fully uncontracted shell pairs (FUSP)
+//   h2eri->unc_sp_center : Array, size 3 * num_unc_sp, centers of FUSP, sorted
+//   h2eri->unc_sp_extent : Array, size num_unc_sp, extents of FUSP, sorted
+// Output parameter:
+//   h2eri->box_extent : Array, size h2pack->n_node, extent of each H2 node box
 void H2ERI_calc_box_extent(H2ERI_t h2eri)
 {
     H2Pack_t h2pack = h2eri->h2pack;
@@ -130,6 +185,11 @@ void H2ERI_calc_box_extent(H2ERI_t h2eri)
 }
 
 // Calculate the matvec cluster for H2 nodes
+// Input parameters:
+//   h2eri->h2pack         : H2 tree partitioning info
+//   h2eri->unc_sp_bf_sidx : Array, size num_unc_sp+1, indices of each FUSP first basis function 
+// Output parameter:
+//   h2eri->h2pack->mat_cluster : Array, size h2pack->n_node * 2, matvec cluster for H2 nodes
 void H2ERI_calc_mat_cluster(H2ERI_t h2eri)
 {
     H2Pack_t h2pack = h2eri->h2pack;
@@ -163,4 +223,13 @@ void H2ERI_calc_mat_cluster(H2ERI_t h2eri)
             mat_cluster[i21] = mat_cluster[2 * child_n + 1];
         }
     }
+}
+
+// H2 partition of uncontracted shell pair centers
+void H2ERI_partition(H2ERI_t h2eri)
+{
+    H2ERI_partition_unc_sp_centers(h2eri, 0, 0.0);
+    H2ERI_calc_bf_sidx(h2eri);
+    H2ERI_calc_box_extent(h2eri);
+    H2ERI_calc_mat_cluster(h2eri);
 }

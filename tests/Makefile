@@ -17,4 +17,4 @@ test_H2ERI.o: test_H2ERI.c
 	$(CC) $(INC) $(CFLAGS) test_H2ERI.c -c
 
 clean:
-	rm *.o *.a
+	rm *.o *.x

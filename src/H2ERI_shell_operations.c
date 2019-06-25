@@ -9,6 +9,11 @@
 #include "H2ERI_typedef.h"
 
 // Rotate shell coordinates for better hierarchical partitioning
+// Input parameters:
+//   h2eri->nshell : Number of shells 
+//   h2eri->shells : Array, size nshell, shells to be rotated
+// Output parameters:
+//   h2eri->shells : Shells with rotated coordinates
 void H2ERI_rotate_shells(H2ERI_t h2eri)
 {
     const int nshell = h2eri->nshell;
@@ -82,7 +87,17 @@ void H2ERI_rotate_shells(H2ERI_t h2eri)
     free(coord);
 }
 
-// Fully uncontract all shells and screen uncontracted shell pairs
+// Fully uncontract all shells into new shells that each shell has
+// only 1 primitive function and screen uncontracted shell pairs
+// Input parameters:
+//   h2eri->nshell  : Number of original shells 
+//   h2eri->shells  : Array, size nshell, original shells
+//   h2eri->scr_tol : Schwarz screening tolerance, typically 1e-10
+// Output parameters:
+//   h2eri->num_unc_sp : Number of uncontracted shell pairs that survives screening
+//   h2eri->unc_sp     : Array, size num_unc_sp * 2, uncontracted screened shell pairs
+//   h2eri->unc_center : Array, size 3 * num_unc_sp, each column is the center 
+//                       coordinate of a new uncontracted shell pair
 void H2ERI_uncontract_shell_pairs(H2ERI_t h2eri)
 {
     int     nshell  = h2eri->nshell;
@@ -241,7 +256,13 @@ double H2ERI_calc_Gaussian_extent(
     return extent;
 }
 
-// Calculate the extents of each shell pair
+// Calculate the extent (numerical support radius) of uncontract shell pairs
+// Input parameters:
+//   h2eri->num_unc_sp : Number of shell pairs
+//   h2eri->unc_sp     : Array, size num_sp * 2, each row is a shell pair
+//   h2eri->ext_tol    : Tolerance of shell pair extent
+// Output parameters:
+//   h2eri->unc_sp_extent : Array, size h2eri->num_unc_sp, extents of each shell pair
 void H2ERI_calc_unc_sp_extents(H2ERI_t h2eri)
 {
     h2eri->unc_sp_extent = (double *) malloc(sizeof(double) * h2eri->num_unc_sp);
@@ -274,32 +295,11 @@ void H2ERI_calc_unc_sp_extents(H2ERI_t h2eri)
     }
 }
 
-// Calculate the AM, basis function indices information of shells and shell pairs 
-void H2ERI_calc_bf_sidx(H2ERI_t h2eri)
+// Process input shells for H2 partitioning
+void H2ERI_process_shells(H2ERI_t h2eri)
 {
-    int nshell      = h2eri->nshell;
-    int num_unc_sp  = h2eri->num_unc_sp;
-    shell_t *shells = h2eri->shells;
-    shell_t *unc_sp = h2eri->unc_sp;
-    
-    h2eri->shell_bf_sidx  = (int *) malloc(sizeof(int) * (nshell + 1));
-    h2eri->unc_sp_bf_sidx = (int *) malloc(sizeof(int) * (num_unc_sp + 1));
-    assert(h2eri->shell_bf_sidx != NULL && h2eri->unc_sp_bf_sidx != NULL);
-    
-    h2eri->shell_bf_sidx[0] = 0;
-    for (int i = 0; i < nshell; i++)
-    {
-        int nbf_i = NCART(shells[i].am);
-        h2eri->shell_bf_sidx[i + 1] = h2eri->shell_bf_sidx[i] + nbf_i;
-    }
-    
-    h2eri->unc_sp_bf_sidx[0] = 0;
-    for (int i = 0; i < num_unc_sp; i++)
-    {
-        int nbf_i20 = NCART(unc_sp[i * 2].am);
-        int nbf_i21 = NCART(unc_sp[i * 2 + 1].am);
-        int nbf_i   = nbf_i20 * nbf_i21;
-        h2eri->unc_sp_bf_sidx[i + 1] = h2eri->unc_sp_bf_sidx[i] + nbf_i;
-    }
+    H2ERI_rotate_shells(h2eri);
+    H2ERI_uncontract_shell_pairs(h2eri);
+    H2ERI_calc_unc_sp_extents(h2eri);
 }
 
