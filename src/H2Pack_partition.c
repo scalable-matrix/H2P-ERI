@@ -520,6 +520,10 @@ void H2P_partition_points(
     h2pack->parent[h2pack->root_idx] = -1;  // Root node doesn't have parent
     H2P_tree_node_destroy(root);  // We don't need the linked list H2 tree anymore
     
+    // Set the default mat_cluster the same as cluster.
+    // For tensor kernels, calculate mat_cluster manually.
+    memcpy(h2pack->mat_cluster, h2pack->cluster, sizeof(int) * n_node * 2);
+    
     // 4. Calculate reduced (in)admissible pairs
     int estimated_n_pair = h2pack->n_node * h2pack->max_child;
     H2P_int_vec_init(&partition_vars.r_inadm_pairs, estimated_n_pair);

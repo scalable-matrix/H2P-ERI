@@ -128,3 +128,39 @@ void H2ERI_calc_box_extent(H2ERI_t h2eri)
         }  // End of j loop
     }  // End of i loop
 }
+
+// Calculate the matvec cluster for H2 nodes
+void H2ERI_calc_mat_cluster(H2ERI_t h2eri)
+{
+    H2Pack_t h2pack = h2eri->h2pack;
+    int n_node    = h2pack->n_node;
+    int max_child = h2pack->max_child;
+    int *cluster  = h2pack->cluster;
+    int *children = h2pack->children;
+    int *n_child  = h2pack->n_child;
+    int *mat_cluster = h2pack->mat_cluster;
+    int *unc_sp_bf_sidx = h2eri->unc_sp_bf_sidx;
+    
+    int offset = 0;
+    for (int i = 0; i < n_node; i++)
+    {
+        int i20 = i * 2;
+        int i21 = i * 2 + 1;
+        int n_child_i = n_child[i];
+        if (n_child_i == 0)
+        {
+            int s_index = cluster[2 * i];
+            int e_index = cluster[2 * i + 1];
+            int node_nbf = unc_sp_bf_sidx[e_index + 1] - unc_sp_bf_sidx[s_index];
+            mat_cluster[i20] = offset;
+            mat_cluster[i21] = offset + node_nbf - 1;
+            offset += node_nbf;
+        } else {
+            int *i_childs = children + i * max_child;
+            int child_0 = i_childs[0];
+            int child_n = i_childs[n_child_i - 1];
+            mat_cluster[i20] = mat_cluster[2 * child_0];
+            mat_cluster[i21] = mat_cluster[2 * child_n + 1];
+        }
+    }
+}

@@ -24,6 +24,7 @@ int main(int argc, char **argv)
     H2ERI_partition_unc_sp_centers(h2eri, 0, 0.0);
     H2ERI_calc_bf_sidx(h2eri);
     H2ERI_calc_box_extent(h2eri);
+    H2ERI_calc_mat_cluster(h2eri);
     
     simint_finalize();
     return 0;

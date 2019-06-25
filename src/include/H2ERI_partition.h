@@ -31,6 +31,14 @@ void H2ERI_partition_unc_sp_centers(H2ERI_t h2eri, int max_leaf_points, double m
 //   h2eri->box_extent : Array, size h2pack->n_node, extent of each H2 node box
 void H2ERI_calc_box_extent(H2ERI_t h2eri);
 
+// Calculate the matvec cluster for H2 nodes
+// Input parameters:
+//   h2eri->h2pack         : H2 tree partitioning info
+//   h2eri->unc_sp_bf_sidx : Array, size num_unc_sp+1, indices of each FUSP first basis function 
+// Output parameter:
+//   h2eri->h2pack->mat_cluster : Array, size h2pack->n_node * 2, matvec cluster for H2 nodes
+void H2ERI_calc_mat_cluster(H2ERI_t h2eri);
+
 #ifdef __cplusplus
 }
 #endif
