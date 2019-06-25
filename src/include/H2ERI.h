@@ -13,4 +13,7 @@
 // H2ERI shell operations
 #include "H2ERI_shell_operations.h"
 
+// H2ERI H2 point partitioning
+#include "H2ERI_partition.h"
+
 #endif

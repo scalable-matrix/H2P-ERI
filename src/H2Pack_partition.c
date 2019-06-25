@@ -97,11 +97,11 @@ H2P_tree_node_t H2P_bisection_partition_points(
                 semi_box_size = MAX(semi_box_size, tmp);
             }
         }
-        semi_box_size = semi_box_size + 1e-10;
+        semi_box_size = semi_box_size + 1e-8;
         for (int j = 0; j < dim; j++)
         {
-            enbox[j] = center[j] - semi_box_size;
-            enbox[dim + j] = 2 * semi_box_size;
+            enbox[j] = center[j] - semi_box_size - 2e-12;
+            enbox[dim + j] = 2 * semi_box_size   + 4e-12;
         }
         free(center);
     }
@@ -130,6 +130,7 @@ H2P_tree_node_t H2P_bisection_partition_points(
     // 3. Bisection partition points in current box
     int *rel_idx   = (int*) malloc(sizeof(int) * node_npts * dim);
     int *child_idx = (int*) malloc(sizeof(int) * node_npts);
+    //DTYPE *rel_coord = (DTYPE*) malloc(sizeof(DTYPE) * node_npts * dim);
     assert(rel_idx != NULL && child_idx != NULL);
     memset(child_idx, 0, sizeof(int) * node_npts);
     int pow2 = 1;
@@ -139,16 +140,16 @@ H2P_tree_node_t H2P_bisection_partition_points(
         DTYPE enbox_width_j  = enbox[dim + j];
         DTYPE *coord_dim_j_s = coord   + j * n_point + coord_s;
         int   *rel_idx_dim_j = rel_idx + j * node_npts;
+        //DTYPE *rel_coord_dim_j = rel_coord + j * node_npts;
         for (int i = 0; i < node_npts; i++)
         {
-            DTYPE rel_coord = coord_dim_j_s[i] - enbox_corner_j;
-            rel_idx_dim_j[i] = DFLOOR(2 * rel_coord / enbox_width_j);
+            DTYPE rel_coord  = coord_dim_j_s[i] - enbox_corner_j;
+            rel_idx_dim_j[i] = DFLOOR(1.9999999999 * rel_coord / enbox_width_j);
             if (rel_idx_dim_j[i] == 2) rel_idx_dim_j[i] = 1;
             child_idx[i] += rel_idx_dim_j[i] * pow2;
         }
         pow2 *= 2;
     }
-    
     
     // 4. Get the number of points in each sub-box, then bucket sort all 
     //    points according to the sub-box a point in
@@ -199,8 +200,8 @@ H2P_tree_node_t H2P_bisection_partition_points(
         int *sub_rel_idx_i = sub_rel_idx + i;
         for (int j = 0; j < dim; j++)
         {
-            sub_box_child[j]       = enbox[j] + 0.5 * enbox[dim + j] * sub_rel_idx_i[j * max_child];
-            sub_box_child[dim + j] = 0.5 * enbox[dim + j];
+            sub_box_child[j]       = enbox[j] + 0.5 * enbox[dim + j] * sub_rel_idx_i[j * max_child] - 1e-12;
+            sub_box_child[dim + j] = 0.5 * enbox[dim + j] + 2e-12;
         }
         sub_coord_se[2 * n_child + 0] = coord_s + sub_displs[i];
         sub_coord_se[2 * n_child + 1] = coord_s + sub_displs[i + 1] - 1;
@@ -243,6 +244,7 @@ H2P_tree_node_t H2P_bisection_partition_points(
     free(sub_displs);
     free(sub_node_npts);
     free(sub_rel_idx);
+    //free(rel_coord);
     free(child_idx);
     free(rel_idx);
     if (alloc_enbox) free(enbox);
@@ -444,7 +446,10 @@ void H2P_calc_reduced_adm_pairs(H2Pack_t h2pack, const DTYPE alpha, const int n0
 }
 
 // Partition points for a H2 tree
-void H2P_partition_points(H2Pack_t h2pack, const int n_point, const DTYPE *coord, int max_leaf_points)
+void H2P_partition_points(
+    H2Pack_t h2pack, const int n_point, const DTYPE *coord, 
+    int max_leaf_points, DTYPE max_leaf_size
+)
 {
     const int dim = h2pack->dim;
     double st, et;
@@ -452,7 +457,6 @@ void H2P_partition_points(H2Pack_t h2pack, const int n_point, const DTYPE *coord
     st = H2P_get_wtime_sec();
     
     // 1. Copy input point coordinates
-    DTYPE max_leaf_size = 0.0;
     h2pack->n_point = n_point;
     if (max_leaf_points <= 0)
     {

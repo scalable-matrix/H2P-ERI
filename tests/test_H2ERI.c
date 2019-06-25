@@ -19,16 +19,10 @@ int main(int argc, char **argv)
     // 2. Fully uncontract shells and calculate the extent of uncontracted shell pairs
     H2ERI_uncontract_shell_pairs(h2eri);
     H2ERI_calc_unc_sp_extents(h2eri);
-    H2ERI_calc_bf_sidx(h2eri);
     
     // 3. H2 partition, calculate tree merge info, box extent and H2Pack.mat_cluster
-    
-    FILE *ouf = fopen("add_sp_extent.m", "w");
-    fprintf(ouf, "sp_extent = [\n");
-    for (int i = 0; i < h2eri->num_unc_sp; i++) 
-        fprintf(ouf, "%.15lf\n", h2eri->unc_sp_extent[i]);
-    fprintf(ouf, "];\n");
-    fclose(ouf);
+    H2ERI_partition_unc_sp_centers(h2eri, 0, 0.0);
+    H2ERI_calc_bf_sidx(h2eri);
     
     simint_finalize();
     return 0;
