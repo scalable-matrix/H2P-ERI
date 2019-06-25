@@ -20,6 +20,7 @@ void H2ERI_partition_unc_sp_centers(H2ERI_t h2eri, int max_leaf_points, double m
         h2eri->h2pack, num_unc_sp, unc_sp_center, 
         max_leaf_points, max_leaf_size
     );
+    memcpy(unc_sp_center, h2eri->h2pack->coord, sizeof(double) * 3 * num_unc_sp);
     
     // 2. Permute the uncontracted shell pairs and their extents according to 
     // the permutation of their center coordinate
@@ -49,3 +50,81 @@ void H2ERI_partition_unc_sp_centers(H2ERI_t h2eri, int max_leaf_points, double m
     h2eri->unc_sp_extent = unc_sp_extent_new;
 }
 
+// Calculate the extents of shell pairs in each H2 box
+void H2ERI_calc_box_extent(H2ERI_t h2eri)
+{
+    H2Pack_t h2pack = h2eri->h2pack;
+    int    n_node         = h2pack->n_node;
+    int    max_level      = h2pack->max_level;
+    int    max_child      = h2pack->max_child;
+    int    n_leaf_node    = h2pack->n_leaf_node;
+    int    *cluster       = h2pack->cluster;
+    int    *children      = h2pack->children;
+    int    *n_child       = h2pack->n_child;
+    int    *level_nodes   = h2pack->level_nodes;
+    int    *level_n_node  = h2pack->level_n_node;
+    double *enbox         = h2pack->enbox;
+    int    num_unc_sp     = h2eri->num_unc_sp;
+    double *unc_sp_center = h2eri->unc_sp_center;
+    double *unc_sp_extent = h2eri->unc_sp_extent;
+    
+    h2eri->box_extent = (double *) malloc(sizeof(double) * n_node);
+    assert(h2eri->box_extent != NULL);
+    double *box_extent = h2eri->box_extent;
+    
+    for (int i = max_level; i >= 1; i--)
+    {
+        int *level_i_nodes = level_nodes + i * n_leaf_node;
+        int level_i_n_node = level_n_node[i];
+        for (int j = 0; j < level_i_n_node; j++)
+        {
+            int node = level_i_nodes[j];
+            double *node_enbox = enbox + 6 * node;
+            double enbox_center[3];
+            enbox_center[0] = node_enbox[0] + 0.5 * node_enbox[3];
+            enbox_center[1] = node_enbox[1] + 0.5 * node_enbox[4];
+            enbox_center[2] = node_enbox[2] + 0.5 * node_enbox[5];
+            
+            int n_child_node = n_child[node];
+            if (n_child_node == 0)
+            {
+                int s_index = cluster[2 * node];
+                int e_index = cluster[2 * node + 1];
+                int n_point = e_index - s_index + 1;
+                double box_extent_node = 0.0;
+                for (int d = 0; d < 3; d++)
+                {
+                    double *center_d = unc_sp_center + d * num_unc_sp;
+                    double enbox_width_d = node_enbox[3 + d];
+                    for (int k = s_index; k <= e_index; k++)
+                    {
+                        double tmp_extent_d_k;
+                        // Distance of shell pair center to the upper limit along each dimension
+                        tmp_extent_d_k  = fabs(center_d[k] - enbox_center[d]);
+                        tmp_extent_d_k  = 0.5 * enbox_width_d - tmp_extent_d_k;
+                        // Outreach of each extent box
+                        tmp_extent_d_k  = unc_sp_extent[k] - tmp_extent_d_k;
+                        // Ratio of extent box outreach over enclosing box size
+                        tmp_extent_d_k /= enbox_width_d;
+                        // Negative means this dimension of extent box is inside the
+                        // enclosing box, make it 0.1 to make sure the box_extent >= 1
+                        tmp_extent_d_k  = MAX(tmp_extent_d_k, 0.1);
+                        box_extent_node = MAX(box_extent_node, tmp_extent_d_k);
+                    }
+                }
+                box_extent[node] = ceil(box_extent_node);
+            } else {
+                // Since the out-reach width is the same, the extent of this box 
+                // (outreach / box width) is just half of the largest sub-box extent.
+                double box_extent_node = 0.0;
+                int *child_nodes = children + node * max_child;
+                for (int k = 0; k < n_child_node; k++)
+                {
+                    int child_k = child_nodes[k];
+                    box_extent_node = MAX(box_extent_node, box_extent[child_k]);
+                }
+                box_extent[node] = ceil(0.5 * box_extent_node);
+            }  // End of "if (n_child_node == 0)"
+        }  // End of j loop
+    }  // End of i loop
+}

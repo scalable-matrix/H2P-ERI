@@ -36,7 +36,7 @@ void H2ERI_uncontract_shell_pairs(H2ERI_t h2eri);
 //   h2eri->unc_sp     : Array, size num_sp * 2, each row is a shell pair
 //   h2eri->ext_tol    : Tolerance of shell pair extent
 // Output parameters:
-//   h2eri->unc_sp_extent : Array, size h2eri->num_unc_sp, extent of each shell pair
+//   h2eri->unc_sp_extent : Array, size h2eri->num_unc_sp, extents of each shell pair
 void H2ERI_calc_unc_sp_extents(H2ERI_t h2eri);
 
 // Calculate the basis function indices information of shells and shell pairs 
@@ -46,8 +46,8 @@ void H2ERI_calc_unc_sp_extents(H2ERI_t h2eri);
 //   h2eri->num_unc_sp : Number of shell pairs
 //   h2eri->unc_sp     : Array, size num_sp * 2, each row is a shell pair
 // Output parameters:
-//   h2eri->shell_bf_sidx  : Array, size nshell+1, index of each shell's first basis function
-//   h2eri->unc_sp_bf_sidx : Array, size num_unc_sp+1, index of each FUSP first basis function 
+//   h2eri->shell_bf_sidx  : Array, size nshell+1, indices of each shell's first basis function
+//   h2eri->unc_sp_bf_sidx : Array, size num_unc_sp+1, indices of each FUSP first basis function 
 void H2ERI_calc_bf_sidx(H2ERI_t h2eri);
 
 #ifdef __cplusplus

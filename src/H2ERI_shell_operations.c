@@ -202,7 +202,7 @@ void H2ERI_uncontract_shell_pairs(H2ERI_t h2eri)
     free(shells_unc_idx);
 }
 
-// Estimate the extent of Gaussian function 
+// Estimate the extents of Gaussian function 
 //       coef * exp(-alpha * x^2) * x^am
 // Input parameters:
 //   alpha, coef, am : Gaussian function parameter
@@ -241,7 +241,7 @@ double H2ERI_calc_Gaussian_extent(
     return extent;
 }
 
-// Calculate the extent of each shell pair
+// Calculate the extents of each shell pair
 void H2ERI_calc_unc_sp_extents(H2ERI_t h2eri)
 {
     h2eri->unc_sp_extent = (double *) malloc(sizeof(double) * h2eri->num_unc_sp);

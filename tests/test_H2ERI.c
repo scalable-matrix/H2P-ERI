@@ -23,6 +23,7 @@ int main(int argc, char **argv)
     // 3. H2 partition, calculate tree merge info, box extent and H2Pack.mat_cluster
     H2ERI_partition_unc_sp_centers(h2eri, 0, 0.0);
     H2ERI_calc_bf_sidx(h2eri);
+    H2ERI_calc_box_extent(h2eri);
     
     simint_finalize();
     return 0;

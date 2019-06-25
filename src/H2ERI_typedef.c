@@ -20,6 +20,7 @@ void H2ERI_init(H2ERI_t *h2eri_, const double scr_tol, const double ext_tol, con
     h2eri->unc_sp_bf_sidx = NULL;
     h2eri->unc_sp_center  = NULL;
     h2eri->unc_sp_extent  = NULL;
+    h2eri->box_extent     = NULL;
     h2eri->shells         = NULL;
     h2eri->unc_sp         = NULL;
     
@@ -36,6 +37,7 @@ void H2ERI_destroy(H2ERI_t h2eri)
     free(h2eri->unc_sp_bf_sidx);
     free(h2eri->unc_sp_center);
     free(h2eri->unc_sp_extent);
+    free(h2eri->box_extent);
     free(h2eri->shells);
     free(h2eri->unc_sp);
     
