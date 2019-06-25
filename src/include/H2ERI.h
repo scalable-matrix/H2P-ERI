@@ -16,4 +16,7 @@
 // H2ERI H2 point partitioning
 #include "H2ERI_partition.h"
 
+// H2ERI H2 construction
+#include "H2ERI_build.h"
+
 #endif

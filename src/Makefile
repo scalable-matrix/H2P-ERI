@@ -1,7 +1,8 @@
 LIB   = libH2PERI.a
-OBJS  = H2Pack_typedef.o H2Pack_utils.o H2Pack_aux_structs.o H2Pack_ID_compress.o \
-        H2Pack_partition.o H2Pack_build.o H2Pack_matvec.o \
-        CMS.o H2ERI_typedef.o H2ERI_shell_operations.o H2ERI_partition.o 
+OBJS  = H2Pack_typedef.o H2Pack_utils.o H2Pack_aux_structs.o \
+        H2Pack_ID_compress.o H2Pack_partition.o CMS.o \
+        H2ERI_typedef.o H2ERI_shell_operations.o H2ERI_partition.o \
+        H2ERI_build.o 
 
 SIMINT_DIR = /home/mkurisu/Workspace/simint/build-avx/install
 
@@ -30,12 +31,6 @@ H2Pack_aux_structs.o: include/*.h H2Pack_aux_structs.c
 H2Pack_partition.o: include/*.h H2Pack_partition.c
 	$(HOSTCC) $(CFLAGS) H2Pack_partition.c -c 
 
-H2Pack_build.o: include/*.h H2Pack_build.c
-	$(HOSTCC) $(CFLAGS) H2Pack_build.c -c 
-
-H2Pack_matvec.o: include/*.h H2Pack_matvec.c
-	$(HOSTCC) $(CFLAGS) H2Pack_matvec.c -c 
-
 CMS.o: include/*.h CMS.c
 	$(HOSTCC) $(CFLAGS) CMS.c -c 
 
@@ -47,6 +42,9 @@ H2ERI_shell_operations.o: include/*.h H2ERI_shell_operations.c
 
 H2ERI_partition.o: include/*.h H2ERI_partition.c
 	$(HOSTCC) $(CFLAGS) H2ERI_partition.c -c 
+
+H2ERI_build.o: include/*.h H2ERI_build.c
+	$(HOSTCC) $(CFLAGS) H2ERI_build.c -c 
 
 clean:
 	rm $(OBJS) $(LIB)
