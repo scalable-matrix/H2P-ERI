@@ -20,6 +20,8 @@ void H2ERI_generate_proxy_point_layers(
     const int nlayer, H2P_dense_mat_t pp
 );
 
+void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri);
+
 #ifdef __cplusplus
 }
 #endif

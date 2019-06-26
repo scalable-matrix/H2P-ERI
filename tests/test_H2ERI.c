@@ -21,6 +21,8 @@ int main(int argc, char **argv)
     // 3. H2 partition of uncontracted shell pair centers
     H2ERI_partition(h2eri);
     
+    H2ERI_calc_ovlp_ff_idx(h2eri);
+    
     simint_finalize();
     return 0;
 }
