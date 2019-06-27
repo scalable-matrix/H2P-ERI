@@ -328,3 +328,45 @@ void H2ERI_extract_shell_pair_idx(
         row_idx[i] = target_rows[i] - off12[sp_idx1] + idx_off[sp_idx2];
     }
 }
+
+// Generate normal distribution random number, Marsaglia polar method
+// Input parameters:
+//   mu, sigma : Normal distribution parameters
+//   nelem     : Number of random numbers to be generated
+// Output parameter:
+//   x : Array, size nelem, generated random numbers
+void H2ERI_generate_normal_distribution(
+    const double mu, const double sigma,
+    const int nelem, double *x
+)
+{
+    double u1, u2, w, mult, x1, x2;
+    for (int i = 0; i < nelem - 1; i += 2)
+    {
+        do 
+        {
+            u1 = ((double) rand () / RAND_MAX) * 2.0 - 1.0;
+            u2 = ((double) rand () / RAND_MAX) * 2.0 - 1.0;
+            w  = u1 * u1 + u2 * u2;
+        } while (w >= 1.0 || w <= 1e-15);
+        mult = sqrt((-2.0 * log(w)) / w);
+        x1 = u1 * mult;
+        x2 = u2 * mult;
+        x[i]   = mu + sigma * x1;
+        x[i+1] = mu + sigma * x2;
+    }
+    if (nelem % 2)
+    {
+        do 
+        {
+            u1 = ((double) rand () / RAND_MAX) * 2.0 - 1.0;
+            u2 = ((double) rand () / RAND_MAX) * 2.0 - 1.0;
+            w  = u1 * u1 + u2 * u2;
+        } while (w >= 1.0 || w <= 1e-15);
+        mult = sqrt((-2.0 * log(w)) / w);
+        x1 = u1 * mult;
+        x[nelem - 1] = mu + sigma * x1;
+    }
+}
+
+
