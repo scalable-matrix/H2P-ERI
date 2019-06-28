@@ -2,12 +2,27 @@
 #define __CMS_H__
 
 #include "simint/simint.h"
+#include "H2Pack_aux_structs.h"
 
 typedef struct simint_shell           shell_t;
 typedef struct simint_multi_shellpair multi_sp_t;
 
-#define NCART(am) ((am>=0)?((((am)+2)*((am)+1))>>1):0)
+struct simint_buff
+{
+    size_t     work_msize;  // Memory size of work_mem
+    size_t     ERI_msize;   // Memory size of ERI_mem
+    double     *work_mem;   // Simint work buff
+    double     *ERI_mem;    // ERI results
+    shell_t    NAI_shell1;  // Shell 1 for NAI calculation
+    shell_t    NAI_shell2;  // Shell 2 for NAI calculation
+    multi_sp_t bra_pair;    // Bra-side shell pairs for ERI calculation
+    multi_sp_t ket_pair;    // Ket-side shell pairs for ERI calculation
+};
+typedef struct simint_buff* simint_buff_t;
+
+#define NCART(am)  ((am>=0)?((((am)+2)*((am)+1))>>1):0)
 #define MAX(a, b)  ((a) > (b) ? (a) : (b))
+#define NPAIR_SIMD 16
 
 // Read all shell information in a .mol file and normalize all these shells
 // Input parameter:
@@ -37,5 +52,56 @@ void CMS_print_shells(const int nshell, shell_t *shells);
 //   scr_vals : Schwarz screening value of each shell pair
 //   <return> : Maximum Schwarz screening value
 double CMS_get_Schwarz_scrval(const int nshell, shell_t *shells, double *scr_vals);
+
+// Initialize a Simint buffer structure
+// Input parameter:
+//   max_am : Maximum angular momentum in the system
+// Output parameter:
+//   *buff_ : Initialized Simint buffer stricture
+void CMS_init_Simint_buff(const int max_am, simint_buff_t *buff_);
+
+// Destroy a Simint buffer structure
+// Input parameter:
+//   buff : Simint buffer stricture to be destroyed 
+void CMS_destroy_Simint_buff(simint_buff_t buff);
+
+// Calculate shell quartet pairs (M_i N_i|P_j Q_j)
+// Input parameters:
+//   shells     : Array, Simint shell structures
+//   n_bra_pair : Number of bra-side shell pairs (M_i N_i|
+//   n_ket_pair : Number of ket-side shell pairs |P_j Q_j)
+//   {M,N}_list : Array, size n_bra_pair, M_i and N_i values
+//   {P,Q}_list : Array, size n_ket_pair, P_j and Q_j values
+//   buff       : Initialized Simint buffer stricture
+// Output parameters:
+//   buff->ERI_mem : ERI results, storing order: (M0 N0|P0 Q0), (M0 N0|P1 Q1), ...
+void CMS_calc_ERI_pairs(
+    shell_t *shells, const int n_bra_pair, const int n_ket_pair,
+    int *M_list, int *N_list, int *P_list, int *Q_list, simint_buff_t buff
+);
+
+// Calculate shell quartet pairs (N_i M_i|Q_j P_j) and unfold all ERI 
+// results to form a matrix.
+// The ERI result tensor of (N_i M_i|Q_j P_j) will be unfold as a 
+// NCART(N_i)*NCART(M_i) rows NCART(Q_j)*NCART(P_j) columns sub-block
+// and placed in the i-th row block and j-th column block of the final
+// result matrix. For the moment, we use (N_i M_i|Q_j P_j) instead of
+// (M_i N_i|P_j Q_j) just to follow the output of calculate_eri_pair.c
+// file in simint-matlab. TODO: check if we can use (M_i N_i|P_j Q_j).
+// Input parameters:
+//   shells     : Array, Simint shell structures
+//   n_bra_pair : Number of bra-side shell pairs (M_i N_i|
+//   n_ket_pair : Number of ket-side shell pairs |P_j Q_j)
+//   {M,N}_list : Array, size n_bra_pair, M_i and N_i values
+//   {P,Q}_list : Array, size n_ket_pair, P_j and Q_j values
+//   buff       : Initialized Simint buffer stricture
+//   mat        : Initialized H2P_dense_mat structure
+// Output parameter:
+//   mat : Matrix with unfolded shell quartets ERI results
+void CMS_calc_ERI_pairs_to_mat(
+    shell_t *shells, const int n_bra_pair, const int n_ket_pair,
+    int *M_list, int *N_list, int *P_list, int *Q_list,
+    simint_buff_t buff, H2P_dense_mat_t mat
+);
 
 #endif

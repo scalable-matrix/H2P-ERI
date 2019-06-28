@@ -1,6 +1,7 @@
 #ifndef __H2PACK_AUX_STRUCTS_H__
 #define __H2PACK_AUX_STRUCTS_H__
 
+#include "H2Pack_utils.h"
 #include "H2Pack_config.h"
 
 #ifdef __cplusplus

@@ -21,23 +21,55 @@ int main(int argc, char **argv)
     // 3. H2 partition of uncontracted shell pair centers
     H2ERI_partition(h2eri);
     
-    int num_target = 8, num_sp = 10, num_pair_idx;
-    int target_rows[8] = {0, 1, 8, 29, 36, 59, 60, 72};
-    int am1[10] = {0, 0, 1, 2, 1, 1, 1, 2, 2, 0};
-    int am2[10] = {0, 1, 1, 0, 1, 1, 2, 0, 1, 2};
-    int pair_idx[10], row_idx[8];
-    int workbuf[10 * 5 + 8 + 2];
-    H2ERI_extract_shell_pair_idx(
-        num_target, target_rows, num_sp, am1, am2,
-        workbuf, &num_pair_idx, pair_idx, row_idx
-    );
-    for (int i = 0; i < num_pair_idx; i++) printf("%d, ", pair_idx[i] + 1);
-    printf("\n");
-    for (int i = 0; i < num_target; i++) printf("%d, ", row_idx[i] + 1);
-    printf("\n");
-    // Output should be:
-    // 1, 2, 3, 6, 8, 9
-    // 1, 2, 9, 15, 22, 27, 28, 40
+    int n_bra_pair, n_ket_pair;
+    int *M_list, *N_list, *P_list, *Q_list;
+    FILE *ouf;
+    simint_buff_t buff;
+    CMS_init_Simint_buff(3, &buff);
+    H2P_dense_mat_t mat;
+    H2P_dense_mat_init(&mat, 10, 10);
+    while (1)
+    {
+        scanf("%d%d", &n_bra_pair, &n_ket_pair);
+        printf("pairs = %d %d\n", n_bra_pair, n_ket_pair);
+        M_list = (int *) malloc(sizeof(int) * n_bra_pair);
+        N_list = (int *) malloc(sizeof(int) * n_bra_pair);
+        P_list = (int *) malloc(sizeof(int) * n_ket_pair);
+        Q_list = (int *) malloc(sizeof(int) * n_ket_pair);
+        for (int i = 0; i < n_bra_pair; i++) scanf("%d", M_list + i);
+        printf("M_list done\n");
+        for (int i = 0; i < n_bra_pair; i++) scanf("%d", N_list + i);
+        printf("N_list done\n");
+        for (int i = 0; i < n_ket_pair; i++) scanf("%d", P_list + i);
+        printf("P_list done\n");
+        for (int i = 0; i < n_ket_pair; i++) scanf("%d", Q_list + i);
+        printf("Q_list done\n");
+        
+        CMS_calc_ERI_pairs_to_mat(
+            h2eri->shells, n_bra_pair, n_ket_pair, 
+            M_list, N_list, P_list, Q_list, buff, mat
+        );
+        
+        ouf = fopen("add_c_eri_mat.m", "w");
+        fprintf(ouf, "c_eri_mat = [\n");
+        for (int i = 0; i < mat->nrow; i++)
+        {
+            double *mat_row = mat->data + mat->ld * i;
+            for (int j = 0; j < mat->ncol; j++)
+                fprintf(ouf, "% .15lf ", mat_row[j]);
+            fprintf(ouf, "\n");
+        }
+        fprintf(ouf, "];\n");
+        fclose(ouf);
+        printf("Calc done\n");
+        
+        free(M_list);
+        free(N_list);
+        free(P_list);
+        free(Q_list);
+    }
+    CMS_destroy_Simint_buff(buff);
+    H2P_dense_mat_destroy(mat);
     
     simint_finalize();
     return 0;

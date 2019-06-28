@@ -209,3 +209,163 @@ double CMS_get_Schwarz_scrval(const int nshell, shell_t *shells, double *scr_val
     free(shell_bf_num);
     return global_max_scrval;
 }
+
+// Initialize a Simint buffer structure
+void CMS_init_Simint_buff(const int max_am, simint_buff_t *buff_)
+{
+    simint_buff_t buff = (simint_buff_t) malloc(sizeof(struct simint_buff));
+    assert(buff != NULL);
+    
+    int max_ncart = NCART(max_am);
+    int max_int = max_ncart * max_ncart * max_ncart * max_ncart;
+    buff->work_msize = simint_ostei_workmem(0, max_am);
+    buff->ERI_msize  = sizeof(double) * max_int * NPAIR_SIMD;
+    buff->work_mem = SIMINT_ALLOC(buff->work_msize);
+    buff->ERI_mem  = SIMINT_ALLOC(buff->ERI_msize);
+    assert(buff->work_mem != NULL && buff->ERI_mem != NULL);
+    
+    simint_initialize_shell(&buff->NAI_shell1);
+    simint_initialize_shell(&buff->NAI_shell2);
+    simint_initialize_multi_shellpair(&buff->bra_pair);
+    simint_initialize_multi_shellpair(&buff->ket_pair);
+    
+    *buff_ = buff;
+}
+
+// Destroy a Simint buffer structure
+void CMS_destroy_Simint_buff(simint_buff_t buff)
+{
+    buff->work_msize = 0;
+    buff->ERI_msize  = 0;
+    SIMINT_FREE(buff->work_mem);
+    SIMINT_FREE(buff->ERI_mem);
+    simint_free_shell(&buff->NAI_shell1);
+    simint_free_shell(&buff->NAI_shell2);
+    simint_free_multi_shellpair(&buff->bra_pair);
+    simint_free_multi_shellpair(&buff->ket_pair);
+}
+
+// Calculate shell quartet pairs (M_i N_i|P_j Q_j)
+void CMS_calc_ERI_pairs(
+    shell_t *shells, const int n_bra_pair, const int n_ket_pair,
+    int *M_list, int *N_list, int *P_list, int *Q_list, simint_buff_t buff
+)
+{
+    // 1. Check if we need to reallocate ERI result buffer
+    int total_ints = 0;
+    for (int i = 0; i < n_bra_pair; i++)
+    {
+        int am_M = shells[M_list[i]].am;
+        int am_N = shells[N_list[i]].am;
+        int ncart_MN = NCART(am_M) * NCART(am_N);
+        for (int j = 0; j < n_ket_pair; j++)
+        {
+            int am_P = shells[P_list[j]].am;
+            int am_Q = shells[Q_list[j]].am;
+            int ncart_PQ = NCART(am_P) * NCART(am_Q);
+            total_ints += ncart_MN * ncart_PQ;
+        }
+    }
+    if (sizeof(double) * total_ints > buff->ERI_msize)
+    {
+        buff->ERI_msize = sizeof(double) * total_ints;
+        SIMINT_FREE(buff->ERI_mem);
+        buff->ERI_mem = SIMINT_ALLOC(buff->ERI_msize);
+        assert(buff->ERI_mem != NULL);
+    }
+    
+    // 2. Calculate shell quartets one by one (not batched yet)
+    double *work_mem = buff->work_mem;
+    double *ERI_mem  = buff->ERI_mem;
+    multi_sp_t *bra_pair = &buff->bra_pair;
+    multi_sp_t *ket_pair = &buff->ket_pair;
+    total_ints = 0;
+    for (int i = 0; i < n_bra_pair; i++)
+    {
+        shell_t *M_shell = shells + M_list[i];
+        shell_t *N_shell = shells + N_list[i];
+        int am_M = shells[M_list[i]].am;
+        int am_N = shells[N_list[i]].am;
+        int ncart_MN = NCART(am_M) * NCART(am_N);
+        simint_create_multi_shellpair(1, M_shell, 1, N_shell, bra_pair, 0);
+        for (int j = 0; j < n_ket_pair; j++)
+        {
+            shell_t *P_shell = shells + P_list[j];
+            shell_t *Q_shell = shells + Q_list[j];
+            int am_P = shells[P_list[j]].am;
+            int am_Q = shells[Q_list[j]].am;
+            int ncart_PQ = NCART(am_P) * NCART(am_Q);
+            simint_create_multi_shellpair(1, P_shell, 1, Q_shell, ket_pair, 0);
+            int ret = simint_compute_eri(bra_pair, ket_pair, 0.0, work_mem, ERI_mem + total_ints);
+            if (ret > 0) total_ints += ncart_MN * ncart_PQ;
+        }
+    }
+}
+
+// Calculate shell quartet pairs (N_i M_i|Q_j P_j) and unfold all ERI 
+// results to form a matrix.
+void CMS_calc_ERI_pairs_to_mat(
+    shell_t *shells, const int n_bra_pair, const int n_ket_pair,
+    int *M_list, int *N_list, int *P_list, int *Q_list,
+    simint_buff_t buff, H2P_dense_mat_t mat
+)
+{
+    // 1. Calculate all shell quartets
+    CMS_calc_ERI_pairs(
+        shells, n_bra_pair, n_ket_pair,  
+        N_list, M_list, Q_list, P_list, buff
+    );
+    
+    // 2. Adjust output matrix size
+    int nrow = 0, ncol = 0;
+    for (int i = 0; i < n_bra_pair; i++)
+    {
+        int am_M = shells[M_list[i]].am;
+        int am_N = shells[N_list[i]].am;
+        int ncart_MN = NCART(am_M) * NCART(am_N);
+        nrow += ncart_MN;
+    }
+    for (int j = 0; j < n_ket_pair; j++)
+    {
+        int am_P = shells[P_list[j]].am;
+        int am_Q = shells[Q_list[j]].am;
+        int ncart_PQ = NCART(am_P) * NCART(am_Q);
+        ncol += ncart_PQ;
+    }
+    H2P_dense_mat_resize(mat, nrow, ncol);
+    
+    // 3. Unfold ERI results to a matrix
+    double *ERI_mem = buff->ERI_mem;
+    int total_ints = 0;
+    int row_idx = 0;
+    for (int i = 0; i < n_bra_pair; i++)
+    {
+        int am_M = shells[M_list[i]].am;
+        int am_N = shells[N_list[i]].am;
+        int ncart_MN = NCART(am_M) * NCART(am_N);
+        
+        int col_idx = 0;
+        for (int j = 0; j < n_ket_pair; j++)
+        {
+            int am_P = shells[P_list[j]].am;
+            int am_Q = shells[Q_list[j]].am;
+            int ncart_PQ = NCART(am_P) * NCART(am_Q);
+            
+            double *NMQP_ERI = ERI_mem + total_ints;
+            double *mat_blk  = mat->data + row_idx * mat->ld + col_idx;
+            
+            for (int k = 0; k < ncart_MN; k++)
+            {
+                double *mat_blk_row = mat_blk  + k * mat->ld;
+                double *ERI_ket_row = NMQP_ERI + k * ncart_PQ;
+                memcpy(mat_blk_row, ERI_ket_row, sizeof(double) * ncart_PQ);
+            }
+            
+            col_idx += ncart_PQ;
+            total_ints += ncart_MN * ncart_PQ;
+        }
+        
+        row_idx += ncart_MN;
+    }
+}
+
