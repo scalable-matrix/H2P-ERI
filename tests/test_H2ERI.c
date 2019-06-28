@@ -45,9 +45,13 @@ int main(int argc, char **argv)
         for (int i = 0; i < n_ket_pair; i++) scanf("%d", Q_list + i);
         printf("Q_list done\n");
         
+        int nrow = CMS_sum_shell_pair_bas_func_pairs(h2eri->shells, n_bra_pair, M_list, N_list);
+        int ncol = CMS_sum_shell_pair_bas_func_pairs(h2eri->shells, n_ket_pair, P_list, Q_list);
+        H2P_dense_mat_resize(mat, nrow, ncol);
+
         CMS_calc_ERI_pairs_to_mat(
             h2eri->shells, n_bra_pair, n_ket_pair, 
-            M_list, N_list, P_list, Q_list, buff, mat
+            M_list, N_list, P_list, Q_list, buff, mat->data, mat->ld
         );
         
         ouf = fopen("add_c_eri_mat.m", "w");

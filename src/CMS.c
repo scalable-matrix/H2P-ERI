@@ -245,27 +245,44 @@ void CMS_destroy_Simint_buff(simint_buff_t buff)
     simint_free_multi_shellpair(&buff->ket_pair);
 }
 
+// Sum the number of basis functions of a shell list
+int CMS_sum_shell_basis_functions(const shell_t *shells, const int nshell, const int *shell_idx)
+{
+    int nbf = 0;
+    for (int i = 0; i < nshell; i++)
+    {
+        int am = shells[shell_idx[i]].am;
+        nbf += NCART(am);
+    }
+    return nbf;
+}
+
+// Sum the number of basis function pairs of a shell pair list
+int CMS_sum_shell_pair_bas_func_pairs(
+    const shell_t *shells, const int num_sp, 
+    const int *shell_idx0, const int *shell_idx1
+)
+{
+    int nbfp = 0;
+    for (int i = 0; i < num_sp; i++)
+    {
+        int am0 = shells[shell_idx0[i]].am;
+        int am1 = shells[shell_idx1[i]].am;
+        nbfp += NCART(am0) * NCART(am1);
+    }
+    return nbfp;
+}
+
 // Calculate shell quartet pairs (M_i N_i|P_j Q_j)
 void CMS_calc_ERI_pairs(
-    shell_t *shells, const int n_bra_pair, const int n_ket_pair,
+    const shell_t *shells, const int n_bra_pair, const int n_ket_pair,
     int *M_list, int *N_list, int *P_list, int *Q_list, simint_buff_t buff
 )
 {
     // 1. Check if we need to reallocate ERI result buffer
-    int total_ints = 0;
-    for (int i = 0; i < n_bra_pair; i++)
-    {
-        int am_M = shells[M_list[i]].am;
-        int am_N = shells[N_list[i]].am;
-        int ncart_MN = NCART(am_M) * NCART(am_N);
-        for (int j = 0; j < n_ket_pair; j++)
-        {
-            int am_P = shells[P_list[j]].am;
-            int am_Q = shells[Q_list[j]].am;
-            int ncart_PQ = NCART(am_P) * NCART(am_Q);
-            total_ints += ncart_MN * ncart_PQ;
-        }
-    }
+    int bra_nbfp = CMS_sum_shell_pair_bas_func_pairs(shells, n_bra_pair, M_list, N_list);
+    int ket_nbfp = CMS_sum_shell_pair_bas_func_pairs(shells, n_ket_pair, P_list, Q_list);
+    int total_ints = bra_nbfp * ket_nbfp;
     if (sizeof(double) * total_ints > buff->ERI_msize)
     {
         buff->ERI_msize = sizeof(double) * total_ints;
@@ -282,16 +299,16 @@ void CMS_calc_ERI_pairs(
     total_ints = 0;
     for (int i = 0; i < n_bra_pair; i++)
     {
-        shell_t *M_shell = shells + M_list[i];
-        shell_t *N_shell = shells + N_list[i];
+        const shell_t *M_shell = shells + M_list[i];
+        const shell_t *N_shell = shells + N_list[i];
         int am_M = shells[M_list[i]].am;
         int am_N = shells[N_list[i]].am;
         int ncart_MN = NCART(am_M) * NCART(am_N);
         simint_create_multi_shellpair(1, M_shell, 1, N_shell, bra_pair, 0);
         for (int j = 0; j < n_ket_pair; j++)
         {
-            shell_t *P_shell = shells + P_list[j];
-            shell_t *Q_shell = shells + Q_list[j];
+            const shell_t *P_shell = shells + P_list[j];
+            const shell_t *Q_shell = shells + Q_list[j];
             int am_P = shells[P_list[j]].am;
             int am_Q = shells[Q_list[j]].am;
             int ncart_PQ = NCART(am_P) * NCART(am_Q);
@@ -305,9 +322,9 @@ void CMS_calc_ERI_pairs(
 // Calculate shell quartet pairs (N_i M_i|Q_j P_j) and unfold all ERI 
 // results to form a matrix.
 void CMS_calc_ERI_pairs_to_mat(
-    shell_t *shells, const int n_bra_pair, const int n_ket_pair,
+    const shell_t *shells, const int n_bra_pair, const int n_ket_pair,
     int *M_list, int *N_list, int *P_list, int *Q_list,
-    simint_buff_t buff, H2P_dense_mat_t mat
+    simint_buff_t buff, double *mat, const int ldm
 )
 {
     // 1. Calculate all shell quartets
@@ -317,22 +334,9 @@ void CMS_calc_ERI_pairs_to_mat(
     );
     
     // 2. Adjust output matrix size
-    int nrow = 0, ncol = 0;
-    for (int i = 0; i < n_bra_pair; i++)
-    {
-        int am_M = shells[M_list[i]].am;
-        int am_N = shells[N_list[i]].am;
-        int ncart_MN = NCART(am_M) * NCART(am_N);
-        nrow += ncart_MN;
-    }
-    for (int j = 0; j < n_ket_pair; j++)
-    {
-        int am_P = shells[P_list[j]].am;
-        int am_Q = shells[Q_list[j]].am;
-        int ncart_PQ = NCART(am_P) * NCART(am_Q);
-        ncol += ncart_PQ;
-    }
-    H2P_dense_mat_resize(mat, nrow, ncol);
+    int nrow = CMS_sum_shell_pair_bas_func_pairs(shells, n_bra_pair, M_list, N_list);
+    int ncol = CMS_sum_shell_pair_bas_func_pairs(shells, n_ket_pair, P_list, Q_list);
+    assert(ncol <= ldm);
     
     // 3. Unfold ERI results to a matrix
     double *ERI_mem = buff->ERI_mem;
@@ -352,11 +356,11 @@ void CMS_calc_ERI_pairs_to_mat(
             int ncart_PQ = NCART(am_P) * NCART(am_Q);
             
             double *NMQP_ERI = ERI_mem + total_ints;
-            double *mat_blk  = mat->data + row_idx * mat->ld + col_idx;
+            double *mat_blk  = mat + row_idx * ldm + col_idx;
             
             for (int k = 0; k < ncart_MN; k++)
             {
-                double *mat_blk_row = mat_blk  + k * mat->ld;
+                double *mat_blk_row = mat_blk  + k * ldm;
                 double *ERI_ket_row = NMQP_ERI + k * ncart_PQ;
                 memcpy(mat_blk_row, ERI_ket_row, sizeof(double) * ncart_PQ);
             }
