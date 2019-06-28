@@ -111,8 +111,8 @@ void CMS_calc_ERI_pairs(
 // file in simint-matlab. TODO: check if we can use (M_i N_i|P_j Q_j).
 // Input parameters:
 //   shells     : Array, Simint shell structures
-//   n_bra_pair : Number of bra-side shell pairs (M_i N_i|
-//   n_ket_pair : Number of ket-side shell pairs |P_j Q_j)
+//   n_bra_pair : Number of bra-side shell pairs (N_i M_i|
+//   n_ket_pair : Number of ket-side shell pairs |Q_j P_j)
 //   {M,N}_list : Array, size n_bra_pair, M_i and N_i values
 //   {P,Q}_list : Array, size n_ket_pair, P_j and Q_j values
 //   buff       : Initialized Simint buffer stricture
@@ -125,6 +125,32 @@ void CMS_calc_ERI_pairs_to_mat(
     const shell_t *shells, const int n_bra_pair, const int n_ket_pair,
     int *M_list, int *N_list, int *P_list, int *Q_list,
     simint_buff_t buff, double *mat, const int ldm
+);
+
+// Calculate NAI pairs (N_i M_i|[x_j, y_j, z_j]) and unfold all NAI 
+// results to form a matrix.
+// Each NAI result (N_i M_i|[x_j, y_j, z_j]) will be unfold as a 1-by-
+// (NCART(N_i)*NCART(M_i)) row vector and place at the j-th row i-th 
+// column block. For the moment, we use (N_i M_i|[x_j, y_j, z_j]) instead
+// of (M_i N_i|[x_j, y_j, z_j]) just to follow the output of the file
+// calculate_nai_block.m in simint-matlab. Note that the output of this 
+// function is the transpose of calculate_nai_block.m's output. 
+// TODO: check if we can use (M_i N_i|[x_j, y_j, z_j]) later.
+// Input parameters:
+//   shells     : Array, Simint shell structures
+//   num_sp     : Number of shell pairs (N_i M_i|
+//   n_point    : Number of point charge
+//   {M,N}_list : Array, size num_sp, M_i and N_i values
+//   x, y, z    : Array, size of n_point, point charge coordinates
+//   ldm        : Leading dimension of output matrix, should >= 
+//                CMS_sum_shell_pair_bas_func_pairs(shells, num_sp, M_list, N_list)
+// Output parameter:
+//   mat : Matrix with unfolded NAI pairs results, size >= ldm * n_point
+void CMS_calc_NAI_pairs_to_mat(
+    const shell_t *shells, const int num_sp, const int n_point,
+    const int *M_list, const int *N_list, 
+    double *x, double *y, double *z,
+    double *mat, const int ldm
 );
 
 #endif

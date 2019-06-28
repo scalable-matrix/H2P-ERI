@@ -21,41 +21,37 @@ int main(int argc, char **argv)
     // 3. H2 partition of uncontracted shell pair centers
     H2ERI_partition(h2eri);
     
-    int n_bra_pair, n_ket_pair;
-    int *M_list, *N_list, *P_list, *Q_list;
+    int num_sp, n_point;
+    int *M_list, *N_list;
+    double *xyz;
     FILE *ouf;
-    simint_buff_t buff;
-    CMS_init_Simint_buff(3, &buff);
     H2P_dense_mat_t mat;
     H2P_dense_mat_init(&mat, 10, 10);
     while (1)
     {
-        scanf("%d%d", &n_bra_pair, &n_ket_pair);
-        printf("pairs = %d %d\n", n_bra_pair, n_ket_pair);
-        M_list = (int *) malloc(sizeof(int) * n_bra_pair);
-        N_list = (int *) malloc(sizeof(int) * n_bra_pair);
-        P_list = (int *) malloc(sizeof(int) * n_ket_pair);
-        Q_list = (int *) malloc(sizeof(int) * n_ket_pair);
-        for (int i = 0; i < n_bra_pair; i++) scanf("%d", M_list + i);
+        scanf("%d%d", &num_sp, &n_point);
+        printf("num_sp = %d, n_point = %d\n", num_sp, n_point);
+        M_list = (int *) malloc(sizeof(int) * num_sp);
+        N_list = (int *) malloc(sizeof(int) * num_sp);
+        xyz = (double *) malloc(sizeof(double) * n_point * 3);
+        double *x = xyz, *y = xyz + n_point, *z = xyz + n_point * 2;
+        for (int i = 0; i < num_sp; i++) scanf("%d", M_list + i);
         printf("M_list done\n");
-        for (int i = 0; i < n_bra_pair; i++) scanf("%d", N_list + i);
+        for (int i = 0; i < num_sp; i++) scanf("%d", N_list + i);
         printf("N_list done\n");
-        for (int i = 0; i < n_ket_pair; i++) scanf("%d", P_list + i);
-        printf("P_list done\n");
-        for (int i = 0; i < n_ket_pair; i++) scanf("%d", Q_list + i);
-        printf("Q_list done\n");
+        for (int i = 0; i < n_point; i++) scanf("%lf%lf%lf", x + i, y + i, z + i);
+        printf("coord done\n");
         
-        int nrow = CMS_sum_shell_pair_bas_func_pairs(h2eri->shells, n_bra_pair, M_list, N_list);
-        int ncol = CMS_sum_shell_pair_bas_func_pairs(h2eri->shells, n_ket_pair, P_list, Q_list);
-        H2P_dense_mat_resize(mat, nrow, ncol);
+        int ncol = CMS_sum_shell_pair_bas_func_pairs(h2eri->shells, num_sp, M_list, N_list);
+        H2P_dense_mat_resize(mat, n_point, ncol);
 
-        CMS_calc_ERI_pairs_to_mat(
-            h2eri->shells, n_bra_pair, n_ket_pair, 
-            M_list, N_list, P_list, Q_list, buff, mat->data, mat->ld
+        CMS_calc_NAI_pairs_to_mat(
+            h2eri->shells, num_sp, n_point, 
+            M_list, N_list, x, y, z, mat->data, mat->ld
         );
         
-        ouf = fopen("add_c_eri_mat.m", "w");
-        fprintf(ouf, "c_eri_mat = [\n");
+        ouf = fopen("add_c_nai_mat.m", "w");
+        fprintf(ouf, "c_nai_mat = [\n");
         for (int i = 0; i < mat->nrow; i++)
         {
             double *mat_row = mat->data + mat->ld * i;
@@ -69,10 +65,8 @@ int main(int argc, char **argv)
         
         free(M_list);
         free(N_list);
-        free(P_list);
-        free(Q_list);
+        free(xyz);
     }
-    CMS_destroy_Simint_buff(buff);
     H2P_dense_mat_destroy(mat);
     
     simint_finalize();

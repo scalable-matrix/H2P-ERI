@@ -320,7 +320,7 @@ void CMS_calc_ERI_pairs(
 }
 
 // Calculate shell quartet pairs (N_i M_i|Q_j P_j) and unfold all ERI 
-// results to form a matrix.
+// results to form a matrix
 void CMS_calc_ERI_pairs_to_mat(
     const shell_t *shells, const int n_bra_pair, const int n_ket_pair,
     int *M_list, int *N_list, int *P_list, int *Q_list,
@@ -373,3 +373,32 @@ void CMS_calc_ERI_pairs_to_mat(
     }
 }
 
+// Calculate NAI pairs (N_i M_i|[x_j, y_j, z_j]) and unfold all NAI 
+// results to form a matrix
+void CMS_calc_NAI_pairs_to_mat(
+    const shell_t *shells, const int num_sp, const int n_point,
+    const int *M_list, const int *N_list, 
+    double *x, double *y, double *z,
+    double *mat, const int ldm
+)
+{
+    double atomic_nums = 1.0;
+    int col_idx = 0;
+    for (int j = 0; j < num_sp; j++)
+    {
+        const shell_t *M_shell = shells + M_list[j];
+        const shell_t *N_shell = shells + N_list[j];
+        int am_M = M_shell->am;
+        int am_N = N_shell->am;
+        int ncart_MN = NCART(am_M) * NCART(am_N);
+        for (int i = 0; i < n_point; i++)
+        {
+            double *mat_blk = mat + i * ldm + col_idx;
+            int ret = simint_compute_potential(
+                1, &atomic_nums, x + i, y + i, z + i,
+                N_shell, M_shell, mat_blk
+            );
+        }
+        col_idx += ncart_MN;
+    }
+}
