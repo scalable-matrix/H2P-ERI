@@ -84,7 +84,9 @@ void H2ERI_calc_bf_sidx(H2ERI_t h2eri)
     h2eri->shell_bf_sidx[0] = 0;
     for (int i = 0; i < nshell; i++)
     {
-        int nbf_i = NCART(shells[i].am);
+        int am_i  = shells[i].am;
+        int nbf_i = NCART(am_i);
+        h2eri->max_am = MAX(h2eri->max_am, am_i);
         h2eri->shell_bf_sidx[i + 1] = h2eri->shell_bf_sidx[i] + nbf_i;
     }
     
@@ -232,4 +234,10 @@ void H2ERI_partition(H2ERI_t h2eri)
     H2ERI_calc_bf_sidx(h2eri);
     H2ERI_calc_box_extent(h2eri);
     H2ERI_calc_mat_cluster(h2eri);
+    
+    int n_thread = h2eri->h2pack->n_thread;
+    h2eri->simint_buffs = (simint_buff_t *) malloc(sizeof(simint_buff_t) * n_thread);
+    assert(h2eri->simint_buffs != NULL);
+    for (int i = 0; i < n_thread; i++)
+        CMS_init_Simint_buff(h2eri->max_am, &h2eri->simint_buffs[i]);
 }

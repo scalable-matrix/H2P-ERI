@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include "CMS.h"
 #include "H2Pack_utils.h"
 #include "H2Pack_typedef.h"
 #include "H2ERI_typedef.h"
@@ -13,6 +14,7 @@ void H2ERI_init(H2ERI_t *h2eri_, const double scr_tol, const double ext_tol, con
     H2ERI_t h2eri = (H2ERI_t) malloc(sizeof(struct H2ERI));
     assert(h2eri != NULL);
     
+    h2eri->max_am  = 0;
     h2eri->scr_tol = scr_tol;
     h2eri->ext_tol = ext_tol;
     
@@ -26,6 +28,7 @@ void H2ERI_init(H2ERI_t *h2eri_, const double scr_tol, const double ext_tol, con
     h2eri->J_pair         = NULL;
     h2eri->J_row          = NULL;
     h2eri->ovlp_ff_idx    = NULL;
+    h2eri->simint_buffs   = NULL;
     
     double _QR_tol = QR_tol;
     H2P_init(&h2eri->h2pack, 3, QR_REL_NRM, &_QR_tol);
@@ -53,6 +56,10 @@ void H2ERI_destroy(H2ERI_t h2eri)
     free(h2eri->J_pair);
     free(h2eri->J_row);
     free(h2eri->ovlp_ff_idx);
+    
+    for (int i = 0; i < h2eri->h2pack->n_thread; i++)
+        CMS_destroy_Simint_buff(h2eri->simint_buffs[i]);
+    free(h2eri->simint_buffs);
     
     H2P_destroy(h2eri->h2pack);
 }
