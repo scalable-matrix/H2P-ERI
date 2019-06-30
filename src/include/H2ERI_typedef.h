@@ -21,11 +21,11 @@ struct H2ERI
     int     *unc_sp_bf_sidx;     // Array, size num_unc_sp+1, indices of each FUSP first basis function 
     double  scr_tol;             // Tolerance of Schwarz screening
     double  ext_tol;             // Tolerance of shell pair extent
-    double *unc_sp_center;       // Array, size 3 * num_unc_sp, centers of FUSP
+    double *unc_sp_center;       // Array, size 3 * num_unc_sp, each column is a FUSP's center
     double *unc_sp_extent;       // Array, size num_unc_sp, extents of FUSP
     double *box_extent;          // Array, size h2pack->n_node, extents of each H2 node box
     shell_t *shells;             // Array, size nshell, contracted shells
-    shell_t *unc_sp;             // Array, size num_unc_sp * 2, FUSP
+    shell_t *unc_sp;             // Array, size 2 * num_unc_sp, each column is a FUSP
     H2P_int_vec_t *J_pair;       // Array, size h2pack->n_node, skeleton shell pair indices of each node
     H2P_int_vec_t *J_row;        // Array, size h2pack->n_node, skeleton row indices in each node's shell pairs
     H2P_int_vec_t *ovlp_ff_idx;  // Array, size h2pack->n_node, i-th vector contains the far field 

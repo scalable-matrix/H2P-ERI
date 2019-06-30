@@ -404,6 +404,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
     int n_point          = h2pack->n_point;
     int n_leaf_node      = h2pack->n_leaf_node;
     int n_r_inadm_pair   = h2pack->n_r_inadm_pair;
+    int num_unc_sp       = h2eri->num_unc_sp;
     int *leaf_nodes      = h2pack->height_nodes;
     int *cluster         = h2pack->cluster;
     int *r_inadm_pairs   = h2pack->r_inadm_pairs;
@@ -469,16 +470,20 @@ void H2ERI_build_D(H2ERI_t h2eri)
     h2pack->mat_size[2] = D0_total_size + D1_total_size;
     printf("Build D calc block size done, total size = %zu\n", h2pack->mat_size[2]);
     
+    
     h2pack->D_data = (DTYPE*) H2P_malloc_aligned(sizeof(DTYPE) * (D0_total_size + D1_total_size));
     assert(h2pack->D_data != NULL);
     DTYPE *D_data = h2pack->D_data;
     const int n_D0_blk = D_blk0->length;
     const int n_D1_blk = D_blk1->length;
+    int *index_seq = (int *) malloc(sizeof(int) * num_unc_sp * 2);
+    assert(index_seq != NULL);
+    for (int i = 0; i < num_unc_sp * 2; i++) index_seq[i] = i;
+    int *unc_sp_idx0 = index_seq;
+    int *unc_sp_idx1 = index_seq + num_unc_sp;
     #pragma omp parallel num_threads(n_thread)
     {
         int tid = omp_get_thread_num();
-        H2P_int_vec_t idx0 = h2pack->tb[tid]->idx0;
-        H2P_int_vec_t idx1 = h2pack->tb[tid]->idx1;
         simint_buff_t buff = h2eri->simint_buffs[tid];
         
         h2pack->tb[tid]->timer = -H2P_get_wtime_sec();
@@ -497,15 +502,8 @@ void H2ERI_build_D(H2ERI_t h2eri)
                 int node_npts = e_index - s_index + 1;
                 int ld_Di = D_ncol[i];
                 DTYPE *Di = D_data + D_ptr[i];
-                H2P_int_vec_set_capacity(idx0, node_npts * 2);
-                idx0->length = 0;
-                int *bra_idx0 = idx0->data;
-                int *bra_idx1 = idx0->data + node_npts;
-                for (int j = 0; j < node_npts; j++) 
-                {
-                    bra_idx0[j] = 2 * (s_index + j);
-                    bra_idx1[j] = 2 * (s_index + j) + 1;
-                }
+                int *bra_idx0 = unc_sp_idx0 + s_index;
+                int *bra_idx1 = unc_sp_idx1 + s_index;
                 int *ket_idx0 = bra_idx0;
                 int *ket_idx1 = bra_idx1;
                 CMS_calc_ERI_pairs_to_mat(
@@ -534,24 +532,10 @@ void H2ERI_build_D(H2ERI_t h2eri)
                 int node1_npts = e_index1 - s_index1 + 1;
                 int ld_Di = D_ncol[i + n_leaf_node];
                 DTYPE *Di = D_data + D_ptr[i + n_leaf_node];
-                H2P_int_vec_set_capacity(idx0, node0_npts * 2);
-                H2P_int_vec_set_capacity(idx1, node1_npts * 2);
-                idx0->length = 0;
-                idx1->length = 0;
-                int *bra_idx0 = idx0->data;
-                int *bra_idx1 = idx0->data + node0_npts;
-                int *ket_idx0 = idx1->data;
-                int *ket_idx1 = idx1->data + node1_npts;
-                for (int j = 0; j < node0_npts; j++) 
-                {
-                    bra_idx0[j] = 2 * (s_index0 + j);
-                    bra_idx1[j] = 2 * (s_index0 + j) + 1;
-                }
-                for (int j = 0; j < node1_npts; j++) 
-                {
-                    ket_idx0[j] = 2 * (s_index1 + j);
-                    ket_idx1[j] = 2 * (s_index1 + j) + 1;
-                }
+                int *bra_idx0 = unc_sp_idx0 + s_index0;
+                int *bra_idx1 = unc_sp_idx1 + s_index0;
+                int *ket_idx0 = unc_sp_idx0 + s_index1;
+                int *ket_idx1 = unc_sp_idx1 + s_index1;
                 CMS_calc_ERI_pairs_to_mat(
                     unc_sp, node0_npts, node1_npts, 
                     bra_idx0, bra_idx1, ket_idx0, ket_idx1,
@@ -562,10 +546,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
         
         h2pack->tb[tid]->timer += H2P_get_wtime_sec();
     }  // End of "pragma omp parallel"
-    
-    FILE *ouf = fopen("D.bin", "wb");
-    fwrite(h2pack->D_data, sizeof(double), h2pack->mat_size[2], ouf);
-    fclose(ouf);
+    free(index_seq);
     
     #ifdef PROFILING_OUTPUT
     double max_t = 0.0, avg_t = 0.0, min_t = 1145141919.0;

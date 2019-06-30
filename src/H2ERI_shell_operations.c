@@ -162,7 +162,6 @@ void H2ERI_uncontract_shell_pairs(H2ERI_t h2eri)
         simint_initialize_shell(&unc_sp[i]);
         simint_allocate_shell(1, &unc_sp[i]);
     }
-    int unc_sp_idx = 0;
     int cidx0 = 0, cidx1 = num_unc_sp, cidx2 = 2 * num_unc_sp;
     const double sqrt2 = sqrt(2.0);
     for (int i = 0; i < nshell_unc; i++)
@@ -185,8 +184,8 @@ void H2ERI_uncontract_shell_pairs(H2ERI_t h2eri)
             unc_sp_center[cidx0] = (a_i * x_i + a_j * x_j) / aij;
             unc_sp_center[cidx1] = (a_i * y_i + a_j * y_j) / aij;
             unc_sp_center[cidx2] = (a_i * z_i + a_j * z_j) / aij;
-            simint_copy_shell(&shells_unc[i], &unc_sp[unc_sp_idx]);
-            simint_copy_shell(&shells_unc[j], &unc_sp[unc_sp_idx + 1]);
+            simint_copy_shell(&shells_unc[i], &unc_sp[cidx0]);
+            simint_copy_shell(&shells_unc[j], &unc_sp[cidx1]);
             
             // If two shell_uncs come from the same contracted shell but are
             // different primitive functions, multiple a sqrt(2) for symmetry.
@@ -198,11 +197,10 @@ void H2ERI_uncontract_shell_pairs(H2ERI_t h2eri)
             int prim_idx_j  = shells_unc_idx[2 * j + 1];
             if ((shell_idx_i == shell_idx_j) && (prim_idx_i != prim_idx_j))
             {
-                unc_sp[unc_sp_idx].coef[0]     *= sqrt2;
-                unc_sp[unc_sp_idx + 1].coef[0] *= sqrt2;
+                unc_sp[cidx0].coef[0] *= sqrt2;
+                unc_sp[cidx1].coef[0] *= sqrt2;
             }
             
-            unc_sp_idx += 2;
             cidx0++;
             cidx1++;
             cidx2++;
@@ -275,16 +273,16 @@ void H2ERI_calc_unc_sp_extents(H2ERI_t h2eri)
 
     for (int i = 0; i < num_unc_sp; i++)
     {
-        int i20  = i * 2;
-        int i21  = i * 2 + 1;
-        int am12 = unc_sp[i20].am + unc_sp[i21].am;
-        int nprim12    = unc_sp[i20].nprim * unc_sp[i21].nprim;
-        double dx      = unc_sp[i20].x - unc_sp[i21].x;
-        double dy      = unc_sp[i20].y - unc_sp[i21].y;
-        double dz      = unc_sp[i20].z - unc_sp[i21].z;
-        double coef12  = unc_sp[i20].coef[0] * unc_sp[i21].coef[0];
-        double alpha1  = unc_sp[i20].alpha[0];
-        double alpha2  = unc_sp[i21].alpha[0];
+        shell_t *shell0 = unc_sp + i;
+        shell_t *shell1 = unc_sp + i + num_unc_sp;
+        int    am12    = shell0->am + shell1->am;
+        int    nprim12 = shell0->nprim * shell1->nprim;
+        double dx      = shell0->x - shell1->x;
+        double dy      = shell0->y - shell1->y;
+        double dz      = shell0->z - shell1->z;
+        double coef12  = shell0->coef[0] * shell1->coef[0];
+        double alpha1  = shell0->alpha[0];
+        double alpha2  = shell1->alpha[0];
         double tol_i   = ext_tol / (double) nprim12;
         double r12     = dx * dx + dy * dy + dz * dz;
         double alpha12 = alpha1 + alpha2;

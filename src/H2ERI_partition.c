@@ -11,6 +11,7 @@
 // Partition uncontracted shell pair centers (as points) for H2 tree
 // Input parameters:
 //   h2eri->num_unc_sp    : Number of fully uncontracted shell pairs (FUSP)
+//   h2eri->unc_sp        : Array, size 2 * num_unc_sp, FUSP
 //   h2eri->unc_sp_center : Array, size 3 * num_unc_sp, centers of FUSP
 //   h2eri->unc_sp_extent : Array, size num_unc_sp, extents of FUSP
 //   max_leaf_points      : Maximum number of point in a leaf node's box. If <= 0, 
@@ -18,6 +19,7 @@
 //   max_leaf_size        : Maximum size of a leaf node's box. 
 // Output parameter:
 //   h2eri->h2pack        : H2Pack structure with point partitioning info
+//   h2eri->unc_sp        : Array, size 2 * num_unc_sp, sorted FUSP
 //   h2eri->unc_sp_center : Array, size 3 * num_unc_sp, sorted centers of FUSP
 //   h2eri->unc_sp_extent : Array, size num_unc_sp, sorted extents of FUSP
 void H2ERI_partition_unc_sp_centers(H2ERI_t h2eri, int max_leaf_points, double max_leaf_size)
@@ -44,8 +46,8 @@ void H2ERI_partition_unc_sp_centers(H2ERI_t h2eri, int max_leaf_points, double m
     for (int i = 0; i < num_unc_sp; i++)
     {
         int cidx_i = coord_idx[i];
-        int i20 = i * 2, i21 = i * 2 + 1;
-        int cidx_i20 = cidx_i * 2, cidx_i21 = cidx_i * 2 + 1;
+        int i20 = i, i21 = i + num_unc_sp;
+        int cidx_i20 = cidx_i, cidx_i21 = cidx_i + num_unc_sp;
         unc_sp_extent_new[i] = unc_sp_extent[cidx_i];
         simint_initialize_shell(&unc_sp_new[i20]);
         simint_initialize_shell(&unc_sp_new[i21]);
@@ -93,8 +95,8 @@ void H2ERI_calc_bf_sidx(H2ERI_t h2eri)
     h2eri->unc_sp_bf_sidx[0] = 0;
     for (int i = 0; i < num_unc_sp; i++)
     {
-        int nbf_i20 = NCART(unc_sp[i * 2].am);
-        int nbf_i21 = NCART(unc_sp[i * 2 + 1].am);
+        int nbf_i20 = NCART(unc_sp[i].am);
+        int nbf_i21 = NCART(unc_sp[i + num_unc_sp].am);
         int nbf_i   = nbf_i20 * nbf_i21;
         h2eri->unc_sp_bf_sidx[i + 1] = h2eri->unc_sp_bf_sidx[i] + nbf_i;
     }

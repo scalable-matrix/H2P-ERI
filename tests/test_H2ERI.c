@@ -22,7 +22,6 @@ int main(int argc, char **argv)
     H2ERI_partition(h2eri);
     
     H2ERI_build(h2eri);
-    printf("H2ERI_build done\n");
     
     simint_finalize();
     return 0;
