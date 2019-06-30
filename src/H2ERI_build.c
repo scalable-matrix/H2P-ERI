@@ -260,75 +260,77 @@ void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri)
 }
 
 // Extract shell pair and row indices of a target row index set from
-// a given set of shell pairs
+// a given set of FISP
 // Input parameters:
-//   num_target  : Number of target row indices
-//   target_rows : Array, size num_target, target row indices set
-//   num_sp      : Number of given shell pairs
-//   am1, am2    : Array, size num_sp, AM of given shell pairs
-//   workbuf     : Array, size num_sp * 5 + num_target + 2, work buffer
+//   unc_sp   : Array, size num_unc_sp, FUSP
+//   row_idx  : Vector, target row indices set
+//   sp_idx   : Vector, given FUSP set 
+//   work_buf : Vector, work buffer
 // Output parameters:
-//   *num_pair_idx : Length of pair_idx
-//   pair_idx      : Array, size num_sp, shell pair indices that contains 
-//                   target row indices set
-//   row_idx       : Array, size num_target, new indices of target row 
-//                   indices set in pair_idx shell pairs
+//   pair_idx    : Vector, FUSP indices that contains target row indices set
+//   row_idx_new : Vector, target row new indices in pair_idx FUSP
 void H2ERI_extract_shell_pair_idx(
-    const int num_target, const int *target_rows, 
-    const int num_sp, const int *am1, const int *am2, 
-    int *workbuf, int *num_pair_idx, int *pair_idx, int *row_idx
+    const multi_sp_t *unc_sp, H2P_int_vec_t row_idx,
+    H2P_int_vec_t sp_idx,   H2P_int_vec_t work_buf,
+    H2P_int_vec_t pair_idx, H2P_int_vec_t row_idx_new
 )
 {
-    int *nbf1    = workbuf;
+    int num_target = row_idx->length;
+    int num_sp = sp_idx->length;
+    
+    H2P_int_vec_set_capacity(work_buf, num_sp * 5 + num_target + 2);
+    int *nbf1    = work_buf->data;
     int *nbf2    = nbf1 + num_sp;
     int *off12   = nbf2 + num_sp;
     int *sp_flag = off12 + (num_sp + 1);
     int *tmp_idx = sp_flag + num_sp;
     int *idx_off = tmp_idx + num_target;
     
-    
     off12[0] = 0;
     for (int i = 0; i < num_sp; i++)
     {
-        nbf1[i] = NCART(am1[i]);
-        nbf2[i] = NCART(am2[i]);
+        const multi_sp_t *sp_i = unc_sp + sp_idx->data[i];
+        nbf1[i] = NCART(sp_i->am1);
+        nbf2[i] = NCART(sp_i->am2);
         off12[i + 1] = off12[i] + nbf1[i] * nbf2[i];
     }
     
     memset(sp_flag, 0, sizeof(int) * num_sp);
     for (int i = 0; i < num_target; i++)
     {
-        int j = 0, x = target_rows[i];
+        int j = 0, x = row_idx->data[i];
         for (j = 0; j < num_sp; j++) 
             if (off12[j] <= x && x < off12[j + 1]) break;
         tmp_idx[i] = j;
         sp_flag[j] = 1;
     }
     
+    H2P_int_vec_set_capacity(pair_idx, num_sp);
     int npair = 0;
     for (int i = 0; i < num_sp; i++)
     {
         if (sp_flag[i])
         {
-            pair_idx[npair] = i;
+            pair_idx->data[npair] = i;
             sp_flag[i] = npair;
             npair++;
         }
     }
-    *num_pair_idx = npair;
+    pair_idx->length = npair;
     
     idx_off[0] = 0;
     for (int i = 0; i < npair; i++) 
     {
-        int spidx = pair_idx[i];
+        int spidx = pair_idx->data[i];
         idx_off[i + 1] = idx_off[i] + nbf1[spidx] * nbf2[spidx];
     }
     
+    H2P_int_vec_set_capacity(row_idx_new, num_target);
     for (int i = 0; i < num_target; i++)
     {
         int sp_idx1 = tmp_idx[i];
         int sp_idx2 = sp_flag[sp_idx1];
-        row_idx[i] = target_rows[i] - off12[sp_idx1] + idx_off[sp_idx2];
+        row_idx_new->data[i] = row_idx->data[i] - off12[sp_idx1] + idx_off[sp_idx2];
     }
 }
 
