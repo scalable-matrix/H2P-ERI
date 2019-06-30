@@ -468,8 +468,6 @@ void H2ERI_build_D(H2ERI_t h2eri)
     H2P_partition_workload(n_r_inadm_pair, D_ptr + n_leaf_node + 1, D1_total_size, n_thread * BD_NTASK_THREAD, D_blk1);
     for (int i = 1; i <= n_leaf_node + n_r_inadm_pair; i++) D_ptr[i] += D_ptr[i - 1];
     h2pack->mat_size[2] = D0_total_size + D1_total_size;
-    printf("Build D calc block size done, total size = %zu\n", h2pack->mat_size[2]);
-    
     
     h2pack->D_data = (DTYPE*) H2P_malloc_aligned(sizeof(DTYPE) * (D0_total_size + D1_total_size));
     assert(h2pack->D_data != NULL);

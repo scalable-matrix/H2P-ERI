@@ -6,6 +6,10 @@
 
 #include "CMS.h"
 
+// NOTICE: Shell quartet (MN|PQ) ERI result needs NCART(M)*NCART(M)
+// *NCART(P)*NCART(Q) + 8 doubles. +8 for statistic information. 
+// TOTAL BUG COUNT FOR THIS: 3
+
 // Read all shell information in a .mol file and normalize all these shells
 void CMS_read_mol_file(const char *mol_fname, int *nshell_, shell_t **shells_)
 {
@@ -219,7 +223,7 @@ void CMS_init_Simint_buff(const int max_am, simint_buff_t *buff_)
     int max_ncart = NCART(max_am);
     int max_int = max_ncart * max_ncart * max_ncart * max_ncart;
     buff->work_msize = simint_ostei_workmem(0, max_am);
-    buff->ERI_msize  = sizeof(double) * max_int * NPAIR_SIMD;
+    buff->ERI_msize  = sizeof(double) * (max_int * NPAIR_SIMD + 8);
     buff->work_mem = SIMINT_ALLOC(buff->work_msize);
     buff->ERI_mem  = SIMINT_ALLOC(buff->ERI_msize);
     assert(buff->work_mem != NULL && buff->ERI_mem != NULL);
@@ -282,7 +286,7 @@ void CMS_calc_ERI_pairs(
     // 1. Check if we need to reallocate ERI result buffer
     int bra_nbfp = CMS_sum_shell_pair_bas_func_pairs(shells, n_bra_pair, M_list, N_list);
     int ket_nbfp = CMS_sum_shell_pair_bas_func_pairs(shells, n_ket_pair, P_list, Q_list);
-    int total_ints = bra_nbfp * ket_nbfp;
+    int total_ints = bra_nbfp * ket_nbfp + 8;
     if (sizeof(double) * total_ints > buff->ERI_msize)
     {
         buff->ERI_msize = sizeof(double) * total_ints;
