@@ -410,7 +410,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
     int *leaf_nodes      = h2pack->height_nodes;
     int *cluster         = h2pack->cluster;
     int *r_inadm_pairs   = h2pack->r_inadm_pairs;
-    int *unc_sp_bf_sidx  = h2eri->unc_sp_bf_sidx;
+    int *unc_sp_bfp_sidx = h2eri->unc_sp_bfp_sidx;
     int *index_seq       = h2eri->index_seq;
     H2P_int_vec_t D_blk0 = h2pack->D_blk0;
     H2P_int_vec_t D_blk1 = h2pack->D_blk1;
@@ -435,7 +435,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
         int node = leaf_nodes[i];
         int s_index = cluster[2 * node];
         int e_index = cluster[2 * node + 1];
-        int node_nbfp = unc_sp_bf_sidx[e_index + 1] - unc_sp_bf_sidx[s_index];
+        int node_nbfp = unc_sp_bfp_sidx[e_index + 1] - unc_sp_bfp_sidx[s_index];
         size_t Di_size = (size_t) node_nbfp * (size_t) node_nbfp;
         D_nrow[i] = node_nbfp;
         D_ncol[i] = node_nbfp;
@@ -456,8 +456,8 @@ void H2ERI_build_D(H2ERI_t h2eri)
         int s_index1 = cluster[2 * node1];
         int e_index0 = cluster[2 * node0 + 1];
         int e_index1 = cluster[2 * node1 + 1];
-        int node0_nbfp = unc_sp_bf_sidx[e_index0 + 1] - unc_sp_bf_sidx[s_index0];
-        int node1_nbfp = unc_sp_bf_sidx[e_index1 + 1] - unc_sp_bf_sidx[s_index1];
+        int node0_nbfp = unc_sp_bfp_sidx[e_index0 + 1] - unc_sp_bfp_sidx[s_index0];
+        int node1_nbfp = unc_sp_bfp_sidx[e_index1 + 1] - unc_sp_bfp_sidx[s_index1];
         size_t Di_size = (size_t) node0_nbfp * (size_t) node1_nbfp;
         D_nrow[i + n_leaf_node] = node0_nbfp;
         D_ncol[i + n_leaf_node] = node1_nbfp;

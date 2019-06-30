@@ -65,40 +65,32 @@ void H2ERI_partition_unc_sp_centers(H2ERI_t h2eri, int max_leaf_points, double m
 
 // Calculate the basis function indices information of shells and shell pairs 
 // Input parameters:
-//   h2eri->nshell     : Number of original shells 
-//   h2eri->shells     : Array, size nshell, original shells
 //   h2eri->num_unc_sp : Number of shell pairs
 //   h2eri->unc_sp     : Array, size num_sp * 2, each row is a shell pair
 // Output parameters:
-//   h2eri->shell_bf_sidx  : Array, size nshell+1, indices of each shell's first basis function
-//   h2eri->unc_sp_bf_sidx : Array, size num_unc_sp+1, indices of each FUSP first basis function 
-void H2ERI_calc_bf_sidx(H2ERI_t h2eri)
+//   h2eri->unc_sp_nbfp     : Array, size num_unc_sp, number of basis function pairs of each FUSP
+//   h2eri->unc_sp_bfp_sidx : Array, size num_unc_sp+1, indices of each FUSP first basis function pair
+void H2ERI_calc_unc_sp_bfp_sidx(H2ERI_t h2eri)
 {
-    int nshell = h2eri->nshell;
     int num_unc_sp = h2eri->num_unc_sp;
-    shell_t *shells = h2eri->shells;
     shell_t *unc_sp_shells = h2eri->unc_sp_shells;
     
-    h2eri->shell_bf_sidx  = (int *) malloc(sizeof(int) * (nshell + 1));
-    h2eri->unc_sp_bf_sidx = (int *) malloc(sizeof(int) * (num_unc_sp + 1));
-    assert(h2eri->shell_bf_sidx != NULL && h2eri->unc_sp_bf_sidx != NULL);
+    h2eri->unc_sp_nbfp     = (int *) malloc(sizeof(int) * num_unc_sp);
+    h2eri->unc_sp_bfp_sidx = (int *) malloc(sizeof(int) * (num_unc_sp + 1));
+    assert(h2eri->unc_sp_nbfp != NULL && h2eri->unc_sp_bfp_sidx != NULL);
     
-    h2eri->shell_bf_sidx[0] = 0;
-    for (int i = 0; i < nshell; i++)
-    {
-        int am_i  = shells[i].am;
-        int nbf_i = NCART(am_i);
-        h2eri->max_am = MAX(h2eri->max_am, am_i);
-        h2eri->shell_bf_sidx[i + 1] = h2eri->shell_bf_sidx[i] + nbf_i;
-    }
-    
-    h2eri->unc_sp_bf_sidx[0] = 0;
+    h2eri->unc_sp_bfp_sidx[0] = 0;
     for (int i = 0; i < num_unc_sp; i++)
     {
-        int nbf_i20 = NCART(unc_sp_shells[i].am);
-        int nbf_i21 = NCART(unc_sp_shells[i + num_unc_sp].am);
-        int nbf_i   = nbf_i20 * nbf_i21;
-        h2eri->unc_sp_bf_sidx[i + 1] = h2eri->unc_sp_bf_sidx[i] + nbf_i;
+        int am0  = unc_sp_shells[i].am;
+        int am1  = unc_sp_shells[i + num_unc_sp].am;
+        int nbf0 = NCART(am0);
+        int nbf1 = NCART(am1);
+        int nbfp = nbf0 * nbf1;
+        h2eri->unc_sp_nbfp[i] = nbfp;
+        h2eri->unc_sp_bfp_sidx[i + 1] = h2eri->unc_sp_bfp_sidx[i] + nbfp;
+        h2eri->max_am = MAX(h2eri->max_am, am0);
+        h2eri->max_am = MAX(h2eri->max_am, am1);
     }
 }
 
@@ -190,8 +182,8 @@ void H2ERI_calc_box_extent(H2ERI_t h2eri)
 
 // Calculate the matvec cluster for H2 nodes
 // Input parameters:
-//   h2eri->h2pack         : H2 tree partitioning info
-//   h2eri->unc_sp_bf_sidx : Array, size num_unc_sp+1, indices of each FUSP first basis function 
+//   h2eri->h2pack          : H2 tree partitioning info
+//   h2eri->unc_sp_bfp_sidx : Array, size num_unc_sp+1, indices of each FUSP first basis function pair
 // Output parameter:
 //   h2eri->h2pack->mat_cluster : Array, size h2pack->n_node * 2, matvec cluster for H2 nodes
 void H2ERI_calc_mat_cluster(H2ERI_t h2eri)
@@ -203,7 +195,7 @@ void H2ERI_calc_mat_cluster(H2ERI_t h2eri)
     int *children = h2pack->children;
     int *n_child  = h2pack->n_child;
     int *mat_cluster = h2pack->mat_cluster;
-    int *unc_sp_bf_sidx = h2eri->unc_sp_bf_sidx;
+    int *unc_sp_bfp_sidx = h2eri->unc_sp_bfp_sidx;
     
     int offset = 0;
     for (int i = 0; i < n_node; i++)
@@ -215,7 +207,7 @@ void H2ERI_calc_mat_cluster(H2ERI_t h2eri)
         {
             int s_index = cluster[2 * i];
             int e_index = cluster[2 * i + 1];
-            int node_nbf = unc_sp_bf_sidx[e_index + 1] - unc_sp_bf_sidx[s_index];
+            int node_nbf = unc_sp_bfp_sidx[e_index + 1] - unc_sp_bfp_sidx[s_index];
             mat_cluster[i20] = offset;
             mat_cluster[i21] = offset + node_nbf - 1;
             offset += node_nbf;
@@ -233,7 +225,7 @@ void H2ERI_calc_mat_cluster(H2ERI_t h2eri)
 void H2ERI_partition(H2ERI_t h2eri)
 {
     H2ERI_partition_unc_sp_centers(h2eri, 0, 0.0);
-    H2ERI_calc_bf_sidx(h2eri);
+    H2ERI_calc_unc_sp_bfp_sidx(h2eri);
     H2ERI_calc_box_extent(h2eri);
     H2ERI_calc_mat_cluster(h2eri);
     

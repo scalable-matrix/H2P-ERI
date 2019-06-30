@@ -17,8 +17,8 @@ struct H2ERI
     int     max_am;              // Maximum angular momentum in the system
     int     nshell;              // Number of contracted shells (from input file)
     int     num_unc_sp;          // Number of fully uncontracted shell pairs (FUSP)
-    int     *shell_bf_sidx;      // Array, size nshell+1, indices of each shell's first basis function
-    int     *unc_sp_bf_sidx;     // Array, size num_unc_sp+1, indices of each FUSP first basis function 
+    int     *unc_sp_nbfp;        // Array, size num_unc_sp, number of basis function pairs of each FUSP
+    int     *unc_sp_bfp_sidx;    // Array, size num_unc_sp+1, indices of each FUSP first basis function pair
     int     *index_seq;          // Array, size num_unc_sp, [0, num_unc_sp-1]
     double  scr_tol;             // Tolerance of Schwarz screening
     double  ext_tol;             // Tolerance of shell pair extent

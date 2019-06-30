@@ -18,19 +18,19 @@ void H2ERI_init(H2ERI_t *h2eri_, const double scr_tol, const double ext_tol, con
     h2eri->scr_tol = scr_tol;
     h2eri->ext_tol = ext_tol;
     
-    h2eri->shell_bf_sidx  = NULL;
-    h2eri->unc_sp_bf_sidx = NULL;
-    h2eri->index_seq      = NULL;
-    h2eri->unc_sp_center  = NULL;
-    h2eri->unc_sp_extent  = NULL;
-    h2eri->box_extent     = NULL;
-    h2eri->shells         = NULL;
-    h2eri->unc_sp_shells  = NULL;
-    h2eri->unc_sp         = NULL;
-    h2eri->J_pair         = NULL;
-    h2eri->J_row          = NULL;
-    h2eri->ovlp_ff_idx    = NULL;
-    h2eri->simint_buffs   = NULL;
+    h2eri->unc_sp_nbfp     = NULL;
+    h2eri->unc_sp_bfp_sidx = NULL;
+    h2eri->index_seq       = NULL;
+    h2eri->unc_sp_center   = NULL;
+    h2eri->unc_sp_extent   = NULL;
+    h2eri->box_extent      = NULL;
+    h2eri->shells          = NULL;
+    h2eri->unc_sp_shells   = NULL;
+    h2eri->unc_sp          = NULL;
+    h2eri->J_pair          = NULL;
+    h2eri->J_row           = NULL;
+    h2eri->ovlp_ff_idx     = NULL;
+    h2eri->simint_buffs    = NULL;
     
     double _QR_tol = QR_tol;
     H2P_init(&h2eri->h2pack, 3, QR_REL_NRM, &_QR_tol);
@@ -41,8 +41,8 @@ void H2ERI_init(H2ERI_t *h2eri_, const double scr_tol, const double ext_tol, con
 // Destroy a H2ERI structure
 void H2ERI_destroy(H2ERI_t h2eri)
 {
-    free(h2eri->shell_bf_sidx);
-    free(h2eri->unc_sp_bf_sidx);
+    free(h2eri->unc_sp_nbfp);
+    free(h2eri->unc_sp_bfp_sidx);
     free(h2eri->index_seq);
     free(h2eri->unc_sp_center);
     free(h2eri->unc_sp_extent);
