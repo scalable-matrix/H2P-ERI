@@ -409,9 +409,10 @@ void H2ERI_build_D(H2ERI_t h2eri)
     int *cluster         = h2pack->cluster;
     int *r_inadm_pairs   = h2pack->r_inadm_pairs;
     int *unc_sp_bf_sidx  = h2eri->unc_sp_bf_sidx;
+    int *index_seq       = h2eri->index_seq;
     H2P_int_vec_t D_blk0 = h2pack->D_blk0;
     H2P_int_vec_t D_blk1 = h2pack->D_blk1;
-    shell_t *unc_sp = h2eri->unc_sp;
+    multi_sp_t *unc_sp   = h2eri->unc_sp;
     
     // 1. Allocate D
     h2pack->n_D = n_leaf_node + n_r_inadm_pair;
@@ -474,11 +475,6 @@ void H2ERI_build_D(H2ERI_t h2eri)
     DTYPE *D_data = h2pack->D_data;
     const int n_D0_blk = D_blk0->length;
     const int n_D1_blk = D_blk1->length;
-    int *index_seq = (int *) malloc(sizeof(int) * num_unc_sp * 2);
-    assert(index_seq != NULL);
-    for (int i = 0; i < num_unc_sp * 2; i++) index_seq[i] = i;
-    int *unc_sp_idx0 = index_seq;
-    int *unc_sp_idx1 = index_seq + num_unc_sp;
     #pragma omp parallel num_threads(n_thread)
     {
         int tid = omp_get_thread_num();
@@ -500,14 +496,11 @@ void H2ERI_build_D(H2ERI_t h2eri)
                 int node_npts = e_index - s_index + 1;
                 int ld_Di = D_ncol[i];
                 DTYPE *Di = D_data + D_ptr[i];
-                int *bra_idx0 = unc_sp_idx0 + s_index;
-                int *bra_idx1 = unc_sp_idx1 + s_index;
-                int *ket_idx0 = bra_idx0;
-                int *ket_idx1 = bra_idx1;
-                CMS_calc_ERI_pairs_to_mat(
+                int *bra_idx = index_seq + s_index;
+                int *ket_idx = bra_idx;
+                H2ERI_calc_ERI_pairs_to_mat(
                     unc_sp, node_npts, node_npts, 
-                    bra_idx0, bra_idx1, ket_idx0, ket_idx1,
-                    buff, Di, ld_Di
+                    bra_idx, ket_idx, buff, Di, ld_Di
                 );
             }
         }  // End of i_blk0 loop
@@ -530,21 +523,22 @@ void H2ERI_build_D(H2ERI_t h2eri)
                 int node1_npts = e_index1 - s_index1 + 1;
                 int ld_Di = D_ncol[i + n_leaf_node];
                 DTYPE *Di = D_data + D_ptr[i + n_leaf_node];
-                int *bra_idx0 = unc_sp_idx0 + s_index0;
-                int *bra_idx1 = unc_sp_idx1 + s_index0;
-                int *ket_idx0 = unc_sp_idx0 + s_index1;
-                int *ket_idx1 = unc_sp_idx1 + s_index1;
-                CMS_calc_ERI_pairs_to_mat(
+                int *bra_idx = index_seq + s_index0;
+                int *ket_idx = index_seq + s_index1;
+                H2ERI_calc_ERI_pairs_to_mat(
                     unc_sp, node0_npts, node1_npts, 
-                    bra_idx0, bra_idx1, ket_idx0, ket_idx1,
-                    buff, Di, ld_Di
+                    bra_idx, ket_idx, buff, Di, ld_Di
                 );
             }
         }  // End of i_blk1 loop
         
         h2pack->tb[tid]->timer += H2P_get_wtime_sec();
     }  // End of "pragma omp parallel"
-    free(index_seq);
+    
+    //FILE *ouf = fopen("D.bin", "wb");
+    //fwrite(D_data, sizeof(double), h2pack->mat_size[2], ouf);
+    //fclose(ouf);
+    //printf("Save D results to file done\n");
     
     #ifdef PROFILING_OUTPUT
     double max_t = 0.0, avg_t = 0.0, min_t = 1145141919.0;

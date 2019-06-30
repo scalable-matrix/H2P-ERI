@@ -64,41 +64,17 @@ void CMS_init_Simint_buff(const int max_am, simint_buff_t *buff_);
 //   buff : Simint buffer stricture to be destroyed 
 void CMS_destroy_Simint_buff(simint_buff_t buff);
 
-// Sum the number of basis functions of a shell list
+// Sum the number of basis function pairs of a FUSP list
 // Input parameters:
-//   shells    : Array, size unrestricted, Simint shell structures
-//   nshell    : Number of shells to sum the number of basis functions
-//   shell_idx : Indices of shells to sum the number of basis functions
-// Output parameters:
-//   <return> : Total number of basis functions of a shell list
-int CMS_sum_shell_basis_functions(const shell_t *shells, const int nshell, const int *shell_idx);
-
-// Sum the number of basis function pairs of a shell pair list
-// Input parameters:
-//   shells     : Array, size unrestricted, Simint shell structures
-//   num_sp     : Number of shell pairs to sum the number of basis function pairs
-//   shell_idx0 : First shell indices of the shell pair list
-//   shell_idx1 : Second shell indices of the shell pair list
-// Output parameters:
-//   <return> : Total number of basis functions pairsof a shell pair list
-int CMS_sum_shell_pair_bas_func_pairs(
-    const shell_t *shells, const int num_sp, 
-    const int *shell_idx0, const int *shell_idx1
-);
-
-// Calculate shell quartet pairs (M_i N_i|P_j Q_j)
-// Input parameters:
-//   shells     : Array, Simint shell structures
-//   n_bra_pair : Number of bra-side shell pairs (M_i N_i|
-//   n_ket_pair : Number of ket-side shell pairs |P_j Q_j)
-//   {M,N}_list : Array, size n_bra_pair, M_i and N_i values
-//   {P,Q}_list : Array, size n_ket_pair, P_j and Q_j values
-//   buff       : Initialized Simint buffer stricture
-// Output parameters:
-//   buff->ERI_mem : ERI results, storing order: (M0 N0|P0 Q0), (M0 N0|P1 Q1), ...
-void CMS_calc_ERI_pairs(
-    const shell_t *shells, const int n_bra_pair, const int n_ket_pair,
-    int *M_list, int *N_list, int *P_list, int *Q_list, simint_buff_t buff
+//   unc_sp_shells : Array, size 2 * num_sp, each column is a FUSP
+//   num_unc_sp    : Number of FUSP
+//   num_sp        : Number of shell pairs (N_i M_i|
+//   sp_idx        : Array, size num_sp, FUSP indices
+// Output parameter:
+//   <return> : Total number of basis function pairs of a FUSP list
+int H2ERI_sum_sp_bfp(
+    const shell_t *unc_sp_shells, const int num_unc_sp,
+    const int num_sp, const int *sp_idx
 );
 
 // Calculate shell quartet pairs (N_i M_i|Q_j P_j) and unfold all ERI 
@@ -110,21 +86,21 @@ void CMS_calc_ERI_pairs(
 // (M_i N_i|P_j Q_j) just to follow the output of calculate_eri_pair.c
 // file in simint-matlab. TODO: check if we can use (M_i N_i|P_j Q_j).
 // Input parameters:
-//   shells     : Array, Simint shell structures
+//   unc_sp     : Array, size num_unc_sp, FUSP
 //   n_bra_pair : Number of bra-side shell pairs (N_i M_i|
 //   n_ket_pair : Number of ket-side shell pairs |Q_j P_j)
-//   {M,N}_list : Array, size n_bra_pair, M_i and N_i values
-//   {P,Q}_list : Array, size n_ket_pair, P_j and Q_j values
+//   bra_idx    : Array, size n_bra_pair, indices of (N_i M_i| pairs
+//   ket_idx    : Array, size n_ket_pair, indices of |Q_j P_j) pairs
 //   buff       : Initialized Simint buffer stricture
 //   ldm        : Leading dimension of output matrix, should >= 
-//                CMS_sum_shell_pair_bas_func_pairs(shells, n_ket_pair, P_list, Q_list)
+//                H2ERI_sum_sp_bfp(unc_sp_shells, num_unc_sp, n_ket_pair, ket_idx)
 // Output parameter:
 //   mat : Matrix with unfolded shell quartets ERI results, size >= ldm *
-//         CMS_sum_shell_pair_bas_func_pairs(shells, n_bra_pair, M_list, N_list) 
-void CMS_calc_ERI_pairs_to_mat(
-    const shell_t *shells, const int n_bra_pair, const int n_ket_pair,
-    int *M_list, int *N_list, int *P_list, int *Q_list,
-    simint_buff_t buff, double *mat, const int ldm
+//         H2ERI_sum_sp_bfp(unc_sp_shells, num_unc_sp, n_bra_pair, bra_idx)
+void H2ERI_calc_ERI_pairs_to_mat(
+    const multi_sp_t *un_sp, const int n_bra_pair, const int n_ket_pair,
+    const int *bra_idx, const int *ket_idx, simint_buff_t buff, 
+    double *mat, const int ldm
 );
 
 // Calculate NAI pairs (N_i M_i|[x_j, y_j, z_j]) and unfold all NAI 
@@ -137,20 +113,20 @@ void CMS_calc_ERI_pairs_to_mat(
 // function is the transpose of calculate_nai_block.m's output. 
 // TODO: check if we can use (M_i N_i|[x_j, y_j, z_j]) later.
 // Input parameters:
-//   shells     : Array, Simint shell structures
-//   num_sp     : Number of shell pairs (N_i M_i|
-//   n_point    : Number of point charge
-//   {M,N}_list : Array, size num_sp, M_i and N_i values
-//   x, y, z    : Array, size of n_point, point charge coordinates
-//   ldm        : Leading dimension of output matrix, should >= 
-//                CMS_sum_shell_pair_bas_func_pairs(shells, num_sp, M_list, N_list)
+//   unc_sp_shells : Array, size 2 * num_sp, each column is a FUSP
+//   num_unc_sp    : Number of FUSP
+//   num_sp        : Number of shell pairs (N_i M_i|
+//   sp_idx        : Array, size num_sp, FUSP indices
+//   n_point       : Number of point charge
+//   x, y, z       : Array, size of n_point, point charge coordinates
+//   ldm           : Leading dimension of output matrix, should >= 
+//                   H2ERI_sum_sp_bfp(unc_sp_shells, num_unc_sp, num_sp, sp_idx)
 // Output parameter:
 //   mat : Matrix with unfolded NAI pairs results, size >= ldm * n_point
-void CMS_calc_NAI_pairs_to_mat(
-    const shell_t *shells, const int num_sp, const int n_point,
-    const int *M_list, const int *N_list, 
-    double *x, double *y, double *z,
-    double *mat, const int ldm
+void H2ERI_calc_NAI_pairs_to_mat(
+    const shell_t *unc_sp_shells, const int num_unc_sp,
+    const int num_sp, const int *sp_idx, const int n_point,
+    double *x, double *y, double *z, double *mat, const int ldm
 );
 
 #endif

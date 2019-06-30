@@ -94,10 +94,10 @@ void H2ERI_rotate_shells(H2ERI_t h2eri)
 //   h2eri->shells  : Array, size nshell, original shells
 //   h2eri->scr_tol : Schwarz screening tolerance, typically 1e-10
 // Output parameters:
-//   h2eri->num_unc_sp : Number of uncontracted shell pairs that survives screening
-//   h2eri->unc_sp     : Array, size num_unc_sp * 2, uncontracted screened shell pairs
-//   h2eri->unc_center : Array, size 3 * num_unc_sp, each column is the center 
-//                       coordinate of a new uncontracted shell pair
+//   h2eri->num_unc_sp    : Number of uncontracted shell pairs that survives screening
+//   h2eri->unc_sp_shells : Array, size num_unc_sp * 2, uncontracted screened shell pairs
+//   h2eri->unc_sp_center : Array, size 3 * num_unc_sp, each column is the center 
+//                          coordinate of a new uncontracted shell pair
 void H2ERI_uncontract_shell_pairs(H2ERI_t h2eri)
 {
     int     nshell  = h2eri->nshell;
@@ -152,15 +152,15 @@ void H2ERI_uncontract_shell_pairs(H2ERI_t h2eri)
     
     h2eri->num_unc_sp = num_unc_sp;
     h2eri->unc_sp_center = (double *) malloc(sizeof(double) * num_unc_sp * 3);
-    h2eri->unc_sp = (shell_t *) malloc(sizeof(shell_t) * num_unc_sp * 2);
-    assert(h2eri->unc_sp_center != NULL && h2eri->unc_sp != NULL);
+    h2eri->unc_sp_shells = (shell_t *) malloc(sizeof(shell_t) * num_unc_sp * 2);
+    assert(h2eri->unc_sp_center != NULL && h2eri->unc_sp_shells != NULL);
     double  *unc_sp_center = h2eri->unc_sp_center;
-    shell_t *unc_sp = h2eri->unc_sp;
+    shell_t *unc_sp_shells = h2eri->unc_sp_shells;
     
     for (int i = 0; i < num_unc_sp * 2; i++)
     {
-        simint_initialize_shell(&unc_sp[i]);
-        simint_allocate_shell(1, &unc_sp[i]);
+        simint_initialize_shell(&unc_sp_shells[i]);
+        simint_allocate_shell(1, &unc_sp_shells[i]);
     }
     int cidx0 = 0, cidx1 = num_unc_sp, cidx2 = 2 * num_unc_sp;
     const double sqrt2 = sqrt(2.0);
@@ -184,8 +184,8 @@ void H2ERI_uncontract_shell_pairs(H2ERI_t h2eri)
             unc_sp_center[cidx0] = (a_i * x_i + a_j * x_j) / aij;
             unc_sp_center[cidx1] = (a_i * y_i + a_j * y_j) / aij;
             unc_sp_center[cidx2] = (a_i * z_i + a_j * z_j) / aij;
-            simint_copy_shell(&shells_unc[i], &unc_sp[cidx0]);
-            simint_copy_shell(&shells_unc[j], &unc_sp[cidx1]);
+            simint_copy_shell(&shells_unc[i], &unc_sp_shells[cidx0]);
+            simint_copy_shell(&shells_unc[j], &unc_sp_shells[cidx1]);
             
             // If two shell_uncs come from the same contracted shell but are
             // different primitive functions, multiple a sqrt(2) for symmetry.
@@ -197,8 +197,8 @@ void H2ERI_uncontract_shell_pairs(H2ERI_t h2eri)
             int prim_idx_j  = shells_unc_idx[2 * j + 1];
             if ((shell_idx_i == shell_idx_j) && (prim_idx_i != prim_idx_j))
             {
-                unc_sp[cidx0].coef[0] *= sqrt2;
-                unc_sp[cidx1].coef[0] *= sqrt2;
+                unc_sp_shells[cidx0].coef[0] *= sqrt2;
+                unc_sp_shells[cidx1].coef[0] *= sqrt2;
             }
             
             cidx0++;
@@ -254,11 +254,11 @@ double H2ERI_calc_Gaussian_extent(
     return extent;
 }
 
-// Calculate the extent (numerical support radius) of uncontract shell pairs
+// Calculate the extent (numerical support radius) of FUSP
 // Input parameters:
-//   h2eri->num_unc_sp : Number of shell pairs
-//   h2eri->unc_sp     : Array, size num_sp * 2, each row is a shell pair
-//   h2eri->ext_tol    : Tolerance of shell pair extent
+//   h2eri->num_unc_sp    : Number of FUSP
+//   h2eri->unc_sp_shells : Array, size 2 * num_sp, each column is a FUSP
+//   h2eri->ext_tol       : Tolerance of shell pair extent
 // Output parameters:
 //   h2eri->unc_sp_extent : Array, size h2eri->num_unc_sp, extents of each shell pair
 void H2ERI_calc_unc_sp_extents(H2ERI_t h2eri)
@@ -267,14 +267,14 @@ void H2ERI_calc_unc_sp_extents(H2ERI_t h2eri)
     assert(h2eri->unc_sp_extent != NULL);
     
     int num_unc_sp = h2eri->num_unc_sp;
-    shell_t *unc_sp = h2eri->unc_sp;
+    shell_t *unc_sp_shells = h2eri->unc_sp_shells;
     double ext_tol = h2eri->ext_tol;
     double *unc_sp_extent = h2eri->unc_sp_extent;
 
     for (int i = 0; i < num_unc_sp; i++)
     {
-        shell_t *shell0 = unc_sp + i;
-        shell_t *shell1 = unc_sp + i + num_unc_sp;
+        shell_t *shell0 = unc_sp_shells + i;
+        shell_t *shell1 = unc_sp_shells + i + num_unc_sp;
         int    am12    = shell0->am + shell1->am;
         int    nprim12 = shell0->nprim * shell1->nprim;
         double dx      = shell0->x - shell1->x;

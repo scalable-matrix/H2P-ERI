@@ -21,6 +21,7 @@ int main(int argc, char **argv)
     // 3. H2 partition of uncontracted shell pair centers
     H2ERI_partition(h2eri);
     
+    // 4. Build H2 representation for ERI tensor
     H2ERI_build(h2eri);
     
     simint_finalize();

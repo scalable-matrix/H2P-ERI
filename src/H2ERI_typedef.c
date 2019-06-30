@@ -20,10 +20,12 @@ void H2ERI_init(H2ERI_t *h2eri_, const double scr_tol, const double ext_tol, con
     
     h2eri->shell_bf_sidx  = NULL;
     h2eri->unc_sp_bf_sidx = NULL;
+    h2eri->index_seq      = NULL;
     h2eri->unc_sp_center  = NULL;
     h2eri->unc_sp_extent  = NULL;
     h2eri->box_extent     = NULL;
     h2eri->shells         = NULL;
+    h2eri->unc_sp_shells  = NULL;
     h2eri->unc_sp         = NULL;
     h2eri->J_pair         = NULL;
     h2eri->J_row          = NULL;
@@ -41,10 +43,14 @@ void H2ERI_destroy(H2ERI_t h2eri)
 {
     free(h2eri->shell_bf_sidx);
     free(h2eri->unc_sp_bf_sidx);
+    free(h2eri->index_seq);
     free(h2eri->unc_sp_center);
     free(h2eri->unc_sp_extent);
     free(h2eri->box_extent);
+    CMS_destroy_shells(h2eri->nshell, h2eri->shells);
+    CMS_destroy_shells(h2eri->num_unc_sp * 2, h2eri->unc_sp_shells);
     free(h2eri->shells);
+    free(h2eri->unc_sp_shells);
     free(h2eri->unc_sp);
     
     for (int i = 0; i < h2eri->h2pack->n_node; i++)
