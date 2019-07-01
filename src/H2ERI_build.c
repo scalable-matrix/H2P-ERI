@@ -5,11 +5,16 @@
 #include <math.h>
 #include <omp.h>
 
+#ifdef USE_MKL
+#include <mkl.h>
+#endif
+
 #include "CMS.h"
 #include "H2ERI_typedef.h"
 #include "H2Pack_utils.h"
-#include "H2Pack_aux_structs.h"
 #include "H2Pack_build.h"
+#include "H2Pack_aux_structs.h"
+#include "H2Pack_ID_compress.h"
 
 // Partition the ring area (r1 < r < r2) using multiple layers of 
 // box surface and generate the same number of uniformly distributed 
@@ -332,6 +337,7 @@ void H2ERI_extract_shell_pair_idx(
         int sp_idx2 = sp_flag[sp_idx1];
         row_idx_new->data[i] = row_idx->data[i] - off12[sp_idx1] + idx_off[sp_idx2];
     }
+    row_idx_new->length = num_target;
 }
 
 // Generate normal distribution random number, Marsaglia polar method
@@ -374,6 +380,19 @@ void H2ERI_generate_normal_distribution(
     }
 }
 
+int H2ERI_gather_sum(const int *arr, H2P_int_vec_t idx)
+{
+    int res = 0;
+    for (int i = 0; i < idx->length; i++) 
+        res += arr[idx->data[i]];
+    return res;
+}
+
+void H2ERI_mark_flags(int *flag, const int n_pos, const int *pos)
+{
+    for (int i = 0; i < n_pos; i++) flag[pos[i]] = 1;
+}
+
 // Build H2 projection matrices using proxy points
 // Input parameter:
 //   h2eri : H2ERI structure with point partitioning & shell pair info
@@ -381,7 +400,280 @@ void H2ERI_generate_normal_distribution(
 //   h2eri : H2ERI structure with H2 projection blocks
 void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
 {
+    H2Pack_t h2pack = h2eri->h2pack;
+    int    n_thread       = h2pack->n_thread;
+    int    n_point        = h2pack->n_point;
+    int    n_node         = h2pack->n_node;
+    int    n_leaf_node    = h2pack->n_leaf_node;
+    int    min_adm_level  = h2pack->min_adm_level;
+    int    max_level      = h2pack->max_level;
+    int    max_child      = h2pack->max_child;
+    int    num_unc_sp     = h2eri->num_unc_sp;
+    int    pp_npts_layer  = h2eri->pp_npts_layer;
+    int    pp_nlayer_ext  = h2eri->pp_nlayer_ext;
+    int    *children      = h2pack->children;
+    int    *n_child       = h2pack->n_child;
+    int    *level_nodes   = h2pack->level_nodes;
+    int    *level_n_node  = h2pack->level_n_node;
+    int    *node_level    = h2pack->node_level;
+    int    *leaf_nodes    = h2pack->height_nodes;
+    int    *cluster       = h2pack->cluster;
+    int    *unc_sp_nbfp   = h2eri->unc_sp_nbfp;
+    int    *index_seq     = h2eri->index_seq;
+    double *enbox         = h2pack->enbox;
+    double *box_extent    = h2eri->box_extent;
+    double *unc_sp_center = h2eri->unc_sp_center;
+    double *unc_sp_extent = h2eri->unc_sp_extent;
+    void   *stop_param    = &h2pack->QR_stop_tol;
+    multi_sp_t *unc_sp = h2eri->unc_sp;
+    shell_t *unc_sp_shells = h2eri->unc_sp_shells;
     
+    // 1. Allocate U and J
+    h2pack->n_UJ  = n_node;
+    h2pack->U     = (H2P_dense_mat_t*) malloc(sizeof(H2P_dense_mat_t) * n_node);
+    h2eri->J_pair = (H2P_int_vec_t*)   malloc(sizeof(H2P_int_vec_t)   * n_node);
+    h2eri->J_row  = (H2P_int_vec_t*)   malloc(sizeof(H2P_int_vec_t)   * n_node);
+    assert(h2pack->U != NULL && h2eri->J_pair != NULL && h2eri->J_row != NULL);
+    for (int i = 0; i < h2pack->n_UJ; i++)
+    {
+        h2pack->U[i]     = NULL;
+        h2eri->J_pair[i] = NULL;
+        h2eri->J_row[i]  = NULL;
+    }
+    H2P_dense_mat_t *U      = h2pack->U;
+    H2P_int_vec_t   *J_pair = h2eri->J_pair;
+    H2P_int_vec_t   *J_row  = h2eri->J_row;
+    
+    // 2. Calculate overlapping far field (admissible) shell pairs
+    //    and auxiliary information for updating skel_flag on each level
+    // skel_flag  : Marks if a point is a skeleton point on the current level
+    // lvl_leaf   : Leaf nodes above the i-th level
+    // lvl_n_leaf : Number of leaf nodes above the i-th level
+    int n_level = max_level + 1;
+    int *skel_flag  = (int *) malloc(sizeof(int) * n_point);
+    int *lvl_leaf   = (int *) malloc(sizeof(int) * n_leaf_node * n_level);
+    int *lvl_n_leaf = (int *) malloc(sizeof(int) * n_level);
+    assert(skel_flag != NULL && lvl_leaf != NULL && lvl_n_leaf != NULL);
+    // At the leaf-node level, all points are skeleton points
+    for (int i = 0; i < n_point; i++) skel_flag[i] = 1;
+    memset(lvl_n_leaf, 0, sizeof(int) * n_level);
+    for (int i = 0; i < n_leaf_node; i++)
+    {
+        int leaf_i  = leaf_nodes[i];
+        int level_i = node_level[leaf_i];
+        for (int j = level_i + 1; j <= max_level; j++)
+        {
+            int idx = lvl_n_leaf[j];
+            lvl_leaf[level_i * n_leaf_node + idx] = leaf_i;
+            lvl_n_leaf[j]++;
+        }
+    }
+    H2ERI_calc_ovlp_ff_idx(h2eri);
+    H2P_int_vec_t *ovlp_ff_idx = h2eri->ovlp_ff_idx;
+    
+    // 3. Hierarchical construction level by level
+    for (int i = max_level; i >= min_adm_level; i--)
+    {
+        int *level_i_nodes = level_nodes + i * n_leaf_node;
+        int level_i_n_node = level_n_node[i];
+        
+        int tid = omp_get_thread_num();
+        H2P_thread_buf_t thread_buf = h2pack->tb[tid];
+        H2P_int_vec_t   pair_idx    = thread_buf->idx0;
+        H2P_int_vec_t   row_idx     = thread_buf->idx1;
+        H2P_int_vec_t   node_ff_idx = thread_buf->idx2;
+        H2P_int_vec_t   ID_buff     = thread_buf->idx2;
+        H2P_int_vec_t   sub_idx     = thread_buf->idx3;
+        H2P_int_vec_t   sub_row_idx = thread_buf->idx2;
+        H2P_int_vec_t   work_buf    = thread_buf->idx3;
+        H2P_int_vec_t   sub_pair    = thread_buf->idx4;
+        H2P_dense_mat_t pp          = thread_buf->mat0;
+        H2P_dense_mat_t A_ff_pp     = thread_buf->mat1;
+        H2P_dense_mat_t randn_mat   = thread_buf->mat0; 
+        H2P_dense_mat_t A_block     = thread_buf->mat2;
+        H2P_dense_mat_t QR_buff     = thread_buf->mat0;  
+        simint_buff_t   buff        = h2eri->simint_buffs[tid];
+        
+        // A. Compress at the i-th level
+        for (int j = 0; j < level_i_n_node; j++)
+        {
+            int node = level_i_nodes[j];
+            int node_n_child = n_child[node];
+            int *child_nodes = children + node * max_child;
+            
+            // (1) Construct row subset for this node
+            if (node_n_child == 0)
+            {
+                int s_index = cluster[2 * node];
+                int e_index = cluster[2 * node + 1];
+                int node_npts = e_index - s_index + 1;
+                H2P_int_vec_set_capacity(pair_idx, node_npts);
+                memcpy(pair_idx->data, index_seq + s_index, sizeof(int) * node_npts);
+                pair_idx->length = node_npts;
+                
+                int nbfp = H2ERI_gather_sum(unc_sp_nbfp, pair_idx);
+                H2P_int_vec_set_capacity(row_idx, nbfp);
+                for (int k = 0; k < nbfp; k++) row_idx->data[k] = k;
+                row_idx->length = nbfp;
+            } else {
+                int row_idx_offset = 0;
+                pair_idx->length = 0;
+                row_idx->length  = 0;
+                for (int k = 0; k < node_n_child; k++)
+                {
+                    int child_k = child_nodes[k];
+                    H2P_int_vec_concatenate(pair_idx, J_pair[child_k]);
+                    int row_idx_spos = row_idx->length;
+                    int row_idx_epos = row_idx_spos + J_row[child_k]->length;
+                    H2P_int_vec_concatenate(row_idx, J_row[child_k]);
+                    for (int l = row_idx_spos; l < row_idx_epos; l++)
+                        row_idx->data[l] += row_idx_offset;
+                    row_idx_offset += H2ERI_gather_sum(unc_sp_nbfp, J_pair[child_k]);
+                }
+            }  // End of "if (node_n_child == 0)"
+            
+            // (2) Generate proxy points
+            double *node_enbox = enbox + 6 * node;
+            double width  = node_enbox[3];
+            double extent = box_extent[node];
+            double r1 = width * (0.5 + ALPHA_SUP);
+            double r2 = width * (0.5 + extent);
+            double d_nlayer = (extent - ALPHA_SUP) * (pp_nlayer_ext - 1);
+            int nlayer_node = 1 + ceil(d_nlayer);
+            H2ERI_generate_proxy_point_layers(r1, r2, nlayer_node, pp_npts_layer, pp);
+            int num_pp = pp->ncol;
+            double *pp_x = pp->data;
+            double *pp_y = pp->data + num_pp;
+            double *pp_z = pp->data + num_pp * 2;
+            double center_x = node_enbox[0] + 0.5 * node_enbox[3];
+            double center_y = node_enbox[1] + 0.5 * node_enbox[4];
+            double center_z = node_enbox[2] + 0.5 * node_enbox[5];
+            #pragma omp simd
+            for (int k = 0; k < num_pp; k++)
+            {
+                pp_x[k] += center_x;
+                pp_y[k] += center_y;
+                pp_z[k] += center_z;
+            }
+            
+            // (3) Prepare current node's overlapping far field point list
+            int n_ff_idx0 = ovlp_ff_idx[node]->length;
+            int *ff_idx0  = ovlp_ff_idx[node]->data;
+            int n_ff_idx  = H2ERI_gather_sum(skel_flag, ovlp_ff_idx[node]);
+            H2P_int_vec_set_capacity(node_ff_idx, n_ff_idx);
+            n_ff_idx = 0;
+            for (int k = 0; k < n_ff_idx0; k++)
+            {
+                int l = ff_idx0[k];
+                if (skel_flag[l] == 1)
+                {
+                    node_ff_idx->data[n_ff_idx] = l;
+                    n_ff_idx++;
+                }
+            }
+            node_ff_idx->length = n_ff_idx;
+            
+            // (4) Construct NAI and ERI blocks
+            // A_ff : A_blk_nrow-by-A_ff_ncol
+            // A_pp : A_pp_ncol-by-A_blk_nrow, need to be transposed in gemm
+            int A_blk_nrow = H2ERI_gather_sum(unc_sp_nbfp, pair_idx);
+            int A_ff_ncol  = H2ERI_gather_sum(unc_sp_nbfp, node_ff_idx);
+            int A_pp_ncol  = num_pp;
+            H2P_dense_mat_resize(A_ff_pp, A_blk_nrow, A_ff_ncol + A_pp_ncol);
+            double *A_ff = A_ff_pp->data;
+            double *A_pp = A_ff_pp->data + A_blk_nrow * A_ff_ncol;
+            H2ERI_calc_ERI_pairs_to_mat(
+                unc_sp, pair_idx->length, node_ff_idx->length,
+                pair_idx->data, node_ff_idx->data, buff, A_ff, A_ff_ncol
+            );
+            H2ERI_calc_NAI_pairs_to_mat(
+                unc_sp_shells, num_unc_sp, pair_idx->length, pair_idx->data, 
+                num_pp, pp_x, pp_y, pp_z, A_pp, A_blk_nrow
+            );
+            
+            // (5) Randomized normalization for NAI and ERI blocks
+            // randn_pp: A_pp_ncol-by-A_blk_nrow
+            // randn_ff: A_ff_ncol-by-A_blk_nrow
+            int randn_size = (A_pp_ncol + A_ff_ncol) * A_blk_nrow;
+            int A_blk_ncol = 2 * A_blk_nrow;
+            H2P_dense_mat_resize(randn_mat, 1, randn_size);
+            H2P_dense_mat_resize(A_block, A_blk_nrow, A_blk_ncol);
+            H2ERI_generate_normal_distribution(0.0, 1.0, randn_size, randn_mat->data);
+            double *randn_pp = randn_mat->data;
+            double *randn_ff = randn_mat->data + A_pp_ncol * A_blk_nrow;
+            double *A_blk_pp = A_block->data;
+            double *A_blk_ff = A_block->data + A_blk_nrow;
+            CBLAS_GEMM(
+                CblasRowMajor, CblasTrans, CblasNoTrans, 
+                A_blk_nrow, A_blk_nrow, A_pp_ncol,
+                1.0, A_pp, A_blk_nrow, randn_pp, A_blk_nrow,
+                0.0, A_blk_pp, A_blk_ncol
+            );
+            CBLAS_GEMM(
+                CblasRowMajor, CblasNoTrans, CblasNoTrans, 
+                A_blk_nrow, A_blk_nrow, A_ff_ncol,
+                1.0, A_ff, A_ff_ncol, randn_ff, A_blk_nrow,
+                0.0, A_blk_ff, A_blk_ncol
+            );
+            H2P_dense_mat_normalize_columns(A_block, randn_mat);
+            
+            // (5) ID compression
+            H2P_dense_mat_select_rows(A_block, row_idx);
+            H2P_dense_mat_resize(QR_buff, 1, 2 * A_block->nrow);
+            H2P_int_vec_set_capacity(ID_buff, 4 * A_block->nrow);
+            H2P_ID_compress(
+                A_block, QR_REL_NRM, stop_param, &U[node], sub_idx, 
+                1, QR_buff->data, ID_buff->data
+            );
+            H2P_int_vec_gather(row_idx, sub_idx, sub_row_idx);
+            H2P_int_vec_init(&J_pair[node], pair_idx->length);
+            H2P_int_vec_init(&J_row[node],  sub_row_idx->length);
+            H2ERI_extract_shell_pair_idx(
+                unc_sp, sub_row_idx, pair_idx, 
+                work_buf, sub_pair, J_row[node]
+            );
+            H2P_int_vec_gather(pair_idx, sub_pair, J_pair[node]);
+        }  // End of j loop
+        
+        // B. Update skeleton points after the compression at the i-th level.
+        //    At the (i-1)-th level, only need to consider overlapping FF shell pairs
+        //    inside the skeleton shell pairs at i-th level. Note that the skeleton
+        //    shell pairs of leaf nodes at i-th level are all shell pairs in leaf nodes.
+        memset(skel_flag, 0, sizeof(int) * n_point);
+        for (int j = 0; j < level_i_n_node; j++)
+        {
+            int node = level_i_nodes[j];
+            H2ERI_mark_flags(skel_flag, J_pair[node]->length, J_pair[node]->data);
+        }
+        for (int j = 0; j < lvl_n_leaf[i]; j++)
+        {
+            int leaf_j = lvl_leaf[i * n_leaf_node + j];
+            int s_index = cluster[2 * leaf_j];
+            int n_index = cluster[2 * leaf_j + 1] - s_index + 1;
+            H2ERI_mark_flags(skel_flag, n_index, index_seq + s_index);
+        }
+    }  // End of i loop
+    
+    // 4. Initialize other not touched U J & add statistic info
+    for (int i = 0; i < h2pack->n_UJ; i++)
+    {
+        if (U[i] == NULL)
+        {
+            H2P_dense_mat_init(&U[i], 1, 1);
+            U[i]->nrow = 0;
+            U[i]->ncol = 0;
+            U[i]->ld   = 0;
+        } else {
+            h2pack->mat_size[0] += U[i]->nrow * U[i]->ncol;
+            h2pack->mat_size[3] += U[i]->nrow * U[i]->ncol;
+            h2pack->mat_size[3] += U[i]->nrow + U[i]->ncol;
+            h2pack->mat_size[5] += U[i]->nrow * U[i]->ncol;
+            h2pack->mat_size[5] += U[i]->nrow + U[i]->ncol;
+        }
+        if (J_row[i]  == NULL) H2P_int_vec_init(&J_row[i], 1);
+        if (J_pair[i] == NULL) H2P_int_vec_init(&J_pair[i], 1);
+        printf("%4d, %4d\n", U[i]->nrow, U[i]->ncol);
+    }
 }
 
 // Build H2 generator matrices

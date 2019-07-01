@@ -98,7 +98,7 @@ int H2ERI_sum_sp_bfp(
 //   mat : Matrix with unfolded shell quartets ERI results, size >= ldm *
 //         H2ERI_sum_sp_bfp(unc_sp_shells, num_unc_sp, n_bra_pair, bra_idx)
 void H2ERI_calc_ERI_pairs_to_mat(
-    const multi_sp_t *un_sp, const int n_bra_pair, const int n_ket_pair,
+    const multi_sp_t *unc_sp, const int n_bra_pair, const int n_ket_pair,
     const int *bra_idx, const int *ket_idx, simint_buff_t buff, 
     double *mat, const int ldm
 );

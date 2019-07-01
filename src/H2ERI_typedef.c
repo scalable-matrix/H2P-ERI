@@ -18,6 +18,9 @@ void H2ERI_init(H2ERI_t *h2eri_, const double scr_tol, const double ext_tol, con
     h2eri->scr_tol = scr_tol;
     h2eri->ext_tol = ext_tol;
     
+    h2eri->pp_npts_layer = 384;
+    h2eri->pp_nlayer_ext = 3;
+    
     h2eri->unc_sp_nbfp     = NULL;
     h2eri->unc_sp_bfp_sidx = NULL;
     h2eri->index_seq       = NULL;
