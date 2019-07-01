@@ -476,164 +476,173 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
     {
         int *level_i_nodes = level_nodes + i * n_leaf_node;
         int level_i_n_node = level_n_node[i];
+        int n_thread_i = MIN(n_thread, level_i_n_node);
         
-        int tid = omp_get_thread_num();
-        H2P_thread_buf_t thread_buf = h2pack->tb[tid];
-        H2P_int_vec_t   pair_idx    = thread_buf->idx0;
-        H2P_int_vec_t   row_idx     = thread_buf->idx1;
-        H2P_int_vec_t   node_ff_idx = thread_buf->idx2;
-        H2P_int_vec_t   ID_buff     = thread_buf->idx2;
-        H2P_int_vec_t   sub_idx     = thread_buf->idx3;
-        H2P_int_vec_t   sub_row_idx = thread_buf->idx2;
-        H2P_int_vec_t   work_buf    = thread_buf->idx3;
-        H2P_int_vec_t   sub_pair    = thread_buf->idx4;
-        H2P_dense_mat_t pp          = thread_buf->mat0;
-        H2P_dense_mat_t A_ff_pp     = thread_buf->mat1;
-        H2P_dense_mat_t randn_mat   = thread_buf->mat0; 
-        H2P_dense_mat_t A_block     = thread_buf->mat2;
-        H2P_dense_mat_t QR_buff     = thread_buf->mat0;  
-        simint_buff_t   buff        = h2eri->simint_buffs[tid];
+        // TODO: U construction performance is extremely bad now, multithreading
+        // performance is even worse. Check the performance issue first.
+        n_thread_i = 1;  
         
         // A. Compress at the i-th level
-        for (int j = 0; j < level_i_n_node; j++)
+        #pragma omp parallel num_threads(n_thread_i)
         {
-            int node = level_i_nodes[j];
-            int node_n_child = n_child[node];
-            int *child_nodes = children + node * max_child;
+            int tid = omp_get_thread_num();
+            H2P_thread_buf_t thread_buf = h2pack->tb[tid];
+            H2P_int_vec_t   pair_idx    = thread_buf->idx0;
+            H2P_int_vec_t   row_idx     = thread_buf->idx1;
+            H2P_int_vec_t   node_ff_idx = thread_buf->idx2;
+            H2P_int_vec_t   ID_buff     = thread_buf->idx2;
+            H2P_int_vec_t   sub_idx     = thread_buf->idx3;
+            H2P_int_vec_t   sub_row_idx = thread_buf->idx2;
+            H2P_int_vec_t   work_buf    = thread_buf->idx3;
+            H2P_int_vec_t   sub_pair    = thread_buf->idx4;
+            H2P_dense_mat_t pp          = thread_buf->mat0;
+            H2P_dense_mat_t A_ff_pp     = thread_buf->mat1;
+            H2P_dense_mat_t randn_mat   = thread_buf->mat0; 
+            H2P_dense_mat_t A_block     = thread_buf->mat2;
+            H2P_dense_mat_t QR_buff     = thread_buf->mat0;  
+            simint_buff_t   simint_buff = h2eri->simint_buffs[tid];
             
-            // (1) Construct row subset for this node
-            if (node_n_child == 0)
+            #pragma omp for schedule(dynamic)
+            for (int j = 0; j < level_i_n_node; j++)
             {
-                int s_index = cluster[2 * node];
-                int e_index = cluster[2 * node + 1];
-                int node_npts = e_index - s_index + 1;
-                H2P_int_vec_set_capacity(pair_idx, node_npts);
-                memcpy(pair_idx->data, index_seq + s_index, sizeof(int) * node_npts);
-                pair_idx->length = node_npts;
+                int node = level_i_nodes[j];
+                int node_n_child = n_child[node];
+                int *child_nodes = children + node * max_child;
                 
-                int nbfp = H2ERI_gather_sum(unc_sp_nbfp, pair_idx);
-                H2P_int_vec_set_capacity(row_idx, nbfp);
-                for (int k = 0; k < nbfp; k++) row_idx->data[k] = k;
-                row_idx->length = nbfp;
-            } else {
-                int row_idx_offset = 0;
-                pair_idx->length = 0;
-                row_idx->length  = 0;
-                for (int k = 0; k < node_n_child; k++)
+                // (1) Construct row subset for this node
+                if (node_n_child == 0)
                 {
-                    int child_k = child_nodes[k];
-                    H2P_int_vec_concatenate(pair_idx, J_pair[child_k]);
-                    int row_idx_spos = row_idx->length;
-                    int row_idx_epos = row_idx_spos + J_row[child_k]->length;
-                    H2P_int_vec_concatenate(row_idx, J_row[child_k]);
-                    for (int l = row_idx_spos; l < row_idx_epos; l++)
-                        row_idx->data[l] += row_idx_offset;
-                    row_idx_offset += H2ERI_gather_sum(unc_sp_nbfp, J_pair[child_k]);
-                }
-            }  // End of "if (node_n_child == 0)"
-            
-            // (2) Generate proxy points
-            double *node_enbox = enbox + 6 * node;
-            double width  = node_enbox[3];
-            double extent = box_extent[node];
-            double r1 = width * (0.5 + ALPHA_SUP);
-            double r2 = width * (0.5 + extent);
-            double d_nlayer = (extent - ALPHA_SUP) * (pp_nlayer_ext - 1);
-            int nlayer_node = 1 + ceil(d_nlayer);
-            H2ERI_generate_proxy_point_layers(r1, r2, nlayer_node, pp_npts_layer, pp);
-            int num_pp = pp->ncol;
-            double *pp_x = pp->data;
-            double *pp_y = pp->data + num_pp;
-            double *pp_z = pp->data + num_pp * 2;
-            double center_x = node_enbox[0] + 0.5 * node_enbox[3];
-            double center_y = node_enbox[1] + 0.5 * node_enbox[4];
-            double center_z = node_enbox[2] + 0.5 * node_enbox[5];
-            #pragma omp simd
-            for (int k = 0; k < num_pp; k++)
-            {
-                pp_x[k] += center_x;
-                pp_y[k] += center_y;
-                pp_z[k] += center_z;
-            }
-            
-            // (3) Prepare current node's overlapping far field point list
-            int n_ff_idx0 = ovlp_ff_idx[node]->length;
-            int *ff_idx0  = ovlp_ff_idx[node]->data;
-            int n_ff_idx  = H2ERI_gather_sum(skel_flag, ovlp_ff_idx[node]);
-            H2P_int_vec_set_capacity(node_ff_idx, n_ff_idx);
-            n_ff_idx = 0;
-            for (int k = 0; k < n_ff_idx0; k++)
-            {
-                int l = ff_idx0[k];
-                if (skel_flag[l] == 1)
+                    int s_index = cluster[2 * node];
+                    int e_index = cluster[2 * node + 1];
+                    int node_npts = e_index - s_index + 1;
+                    H2P_int_vec_set_capacity(pair_idx, node_npts);
+                    memcpy(pair_idx->data, index_seq + s_index, sizeof(int) * node_npts);
+                    pair_idx->length = node_npts;
+                    
+                    int nbfp = H2ERI_gather_sum(unc_sp_nbfp, pair_idx);
+                    H2P_int_vec_set_capacity(row_idx, nbfp);
+                    for (int k = 0; k < nbfp; k++) row_idx->data[k] = k;
+                    row_idx->length = nbfp;
+                } else {
+                    int row_idx_offset = 0;
+                    pair_idx->length = 0;
+                    row_idx->length  = 0;
+                    for (int k = 0; k < node_n_child; k++)
+                    {
+                        int child_k = child_nodes[k];
+                        H2P_int_vec_concatenate(pair_idx, J_pair[child_k]);
+                        int row_idx_spos = row_idx->length;
+                        int row_idx_epos = row_idx_spos + J_row[child_k]->length;
+                        H2P_int_vec_concatenate(row_idx, J_row[child_k]);
+                        for (int l = row_idx_spos; l < row_idx_epos; l++)
+                            row_idx->data[l] += row_idx_offset;
+                        row_idx_offset += H2ERI_gather_sum(unc_sp_nbfp, J_pair[child_k]);
+                    }
+                }  // End of "if (node_n_child == 0)"
+                
+                // (2) Generate proxy points
+                double *node_enbox = enbox + 6 * node;
+                double width  = node_enbox[3];
+                double extent = box_extent[node];
+                double r1 = width * (0.5 + ALPHA_SUP);
+                double r2 = width * (0.5 + extent);
+                double d_nlayer = (extent - ALPHA_SUP) * (pp_nlayer_ext - 1);
+                int nlayer_node = 1 + ceil(d_nlayer);
+                H2ERI_generate_proxy_point_layers(r1, r2, nlayer_node, pp_npts_layer, pp);
+                int num_pp = pp->ncol;
+                double *pp_x = pp->data;
+                double *pp_y = pp->data + num_pp;
+                double *pp_z = pp->data + num_pp * 2;
+                double center_x = node_enbox[0] + 0.5 * node_enbox[3];
+                double center_y = node_enbox[1] + 0.5 * node_enbox[4];
+                double center_z = node_enbox[2] + 0.5 * node_enbox[5];
+                #pragma omp simd
+                for (int k = 0; k < num_pp; k++)
                 {
-                    node_ff_idx->data[n_ff_idx] = l;
-                    n_ff_idx++;
+                    pp_x[k] += center_x;
+                    pp_y[k] += center_y;
+                    pp_z[k] += center_z;
                 }
-            }
-            node_ff_idx->length = n_ff_idx;
-            
-            // (4) Construct NAI and ERI blocks
-            // A_ff : A_blk_nrow-by-A_ff_ncol
-            // A_pp : A_pp_ncol-by-A_blk_nrow, need to be transposed in gemm
-            int A_blk_nrow = H2ERI_gather_sum(unc_sp_nbfp, pair_idx);
-            int A_ff_ncol  = H2ERI_gather_sum(unc_sp_nbfp, node_ff_idx);
-            int A_pp_ncol  = num_pp;
-            H2P_dense_mat_resize(A_ff_pp, A_blk_nrow, A_ff_ncol + A_pp_ncol);
-            double *A_ff = A_ff_pp->data;
-            double *A_pp = A_ff_pp->data + A_blk_nrow * A_ff_ncol;
-            H2ERI_calc_ERI_pairs_to_mat(
-                unc_sp, pair_idx->length, node_ff_idx->length,
-                pair_idx->data, node_ff_idx->data, buff, A_ff, A_ff_ncol
-            );
-            H2ERI_calc_NAI_pairs_to_mat(
-                unc_sp_shells, num_unc_sp, pair_idx->length, pair_idx->data, 
-                num_pp, pp_x, pp_y, pp_z, A_pp, A_blk_nrow
-            );
-            
-            // (5) Randomized normalization for NAI and ERI blocks
-            // randn_pp: A_pp_ncol-by-A_blk_nrow
-            // randn_ff: A_ff_ncol-by-A_blk_nrow
-            int randn_size = (A_pp_ncol + A_ff_ncol) * A_blk_nrow;
-            int A_blk_ncol = 2 * A_blk_nrow;
-            H2P_dense_mat_resize(randn_mat, 1, randn_size);
-            H2P_dense_mat_resize(A_block, A_blk_nrow, A_blk_ncol);
-            H2ERI_generate_normal_distribution(0.0, 1.0, randn_size, randn_mat->data);
-            double *randn_pp = randn_mat->data;
-            double *randn_ff = randn_mat->data + A_pp_ncol * A_blk_nrow;
-            double *A_blk_pp = A_block->data;
-            double *A_blk_ff = A_block->data + A_blk_nrow;
-            CBLAS_GEMM(
-                CblasRowMajor, CblasTrans, CblasNoTrans, 
-                A_blk_nrow, A_blk_nrow, A_pp_ncol,
-                1.0, A_pp, A_blk_nrow, randn_pp, A_blk_nrow,
-                0.0, A_blk_pp, A_blk_ncol
-            );
-            CBLAS_GEMM(
-                CblasRowMajor, CblasNoTrans, CblasNoTrans, 
-                A_blk_nrow, A_blk_nrow, A_ff_ncol,
-                1.0, A_ff, A_ff_ncol, randn_ff, A_blk_nrow,
-                0.0, A_blk_ff, A_blk_ncol
-            );
-            H2P_dense_mat_normalize_columns(A_block, randn_mat);
-            
-            // (5) ID compression
-            H2P_dense_mat_select_rows(A_block, row_idx);
-            H2P_dense_mat_resize(QR_buff, 1, 2 * A_block->nrow);
-            H2P_int_vec_set_capacity(ID_buff, 4 * A_block->nrow);
-            H2P_ID_compress(
-                A_block, QR_REL_NRM, stop_param, &U[node], sub_idx, 
-                1, QR_buff->data, ID_buff->data
-            );
-            H2P_int_vec_gather(row_idx, sub_idx, sub_row_idx);
-            H2P_int_vec_init(&J_pair[node], pair_idx->length);
-            H2P_int_vec_init(&J_row[node],  sub_row_idx->length);
-            H2ERI_extract_shell_pair_idx(
-                unc_sp, sub_row_idx, pair_idx, 
-                work_buf, sub_pair, J_row[node]
-            );
-            H2P_int_vec_gather(pair_idx, sub_pair, J_pair[node]);
-        }  // End of j loop
+                
+                // (3) Prepare current node's overlapping far field point list
+                int n_ff_idx0 = ovlp_ff_idx[node]->length;
+                int *ff_idx0  = ovlp_ff_idx[node]->data;
+                int n_ff_idx  = H2ERI_gather_sum(skel_flag, ovlp_ff_idx[node]);
+                H2P_int_vec_set_capacity(node_ff_idx, n_ff_idx);
+                n_ff_idx = 0;
+                for (int k = 0; k < n_ff_idx0; k++)
+                {
+                    int l = ff_idx0[k];
+                    if (skel_flag[l] == 1)
+                    {
+                        node_ff_idx->data[n_ff_idx] = l;
+                        n_ff_idx++;
+                    }
+                }
+                node_ff_idx->length = n_ff_idx;
+                
+                // (4) Construct NAI and ERI blocks
+                // A_ff : A_blk_nrow-by-A_ff_ncol
+                // A_pp : A_pp_ncol-by-A_blk_nrow, need to be transposed in gemm
+                int A_blk_nrow = H2ERI_gather_sum(unc_sp_nbfp, pair_idx);
+                int A_ff_ncol  = H2ERI_gather_sum(unc_sp_nbfp, node_ff_idx);
+                int A_pp_ncol  = num_pp;
+                H2P_dense_mat_resize(A_ff_pp, A_blk_nrow, A_ff_ncol + A_pp_ncol);
+                double *A_ff = A_ff_pp->data;
+                double *A_pp = A_ff_pp->data + A_blk_nrow * A_ff_ncol;
+                H2ERI_calc_ERI_pairs_to_mat(
+                    unc_sp, pair_idx->length, node_ff_idx->length, pair_idx->data, 
+                    node_ff_idx->data, simint_buff, A_ff, A_ff_ncol
+                );
+                H2ERI_calc_NAI_pairs_to_mat(
+                    unc_sp_shells, num_unc_sp, pair_idx->length, pair_idx->data, 
+                    num_pp, pp_x, pp_y, pp_z, A_pp, A_blk_nrow
+                );
+                
+                // (5) Randomized normalization for NAI and ERI blocks
+                // randn_pp: A_pp_ncol-by-A_blk_nrow
+                // randn_ff: A_ff_ncol-by-A_blk_nrow
+                int randn_size = (A_pp_ncol + A_ff_ncol) * A_blk_nrow;
+                int A_blk_ncol = 2 * A_blk_nrow;
+                H2P_dense_mat_resize(randn_mat, 1, randn_size);
+                H2P_dense_mat_resize(A_block, A_blk_nrow, A_blk_ncol);
+                H2ERI_generate_normal_distribution(0.0, 1.0, randn_size, randn_mat->data);
+                double *randn_pp = randn_mat->data;
+                double *randn_ff = randn_mat->data + A_pp_ncol * A_blk_nrow;
+                double *A_blk_pp = A_block->data;
+                double *A_blk_ff = A_block->data + A_blk_nrow;
+                CBLAS_GEMM(
+                    CblasRowMajor, CblasTrans, CblasNoTrans, 
+                    A_blk_nrow, A_blk_nrow, A_pp_ncol,
+                    1.0, A_pp, A_blk_nrow, randn_pp, A_blk_nrow,
+                    0.0, A_blk_pp, A_blk_ncol
+                );
+                CBLAS_GEMM(
+                    CblasRowMajor, CblasNoTrans, CblasNoTrans, 
+                    A_blk_nrow, A_blk_nrow, A_ff_ncol,
+                    1.0, A_ff, A_ff_ncol, randn_ff, A_blk_nrow,
+                    0.0, A_blk_ff, A_blk_ncol
+                );
+                H2P_dense_mat_normalize_columns(A_block, randn_mat);
+                
+                // (5) ID compression
+                H2P_dense_mat_select_rows(A_block, row_idx);
+                H2P_dense_mat_resize(QR_buff, 1, 2 * A_block->nrow);
+                H2P_int_vec_set_capacity(ID_buff, 4 * A_block->nrow);
+                H2P_ID_compress(
+                    A_block, QR_REL_NRM, stop_param, &U[node], sub_idx, 
+                    1, QR_buff->data, ID_buff->data
+                );
+                H2P_int_vec_gather(row_idx, sub_idx, sub_row_idx);
+                H2P_int_vec_init(&J_pair[node], pair_idx->length);
+                H2P_int_vec_init(&J_row[node],  sub_row_idx->length);
+                H2ERI_extract_shell_pair_idx(
+                    unc_sp, sub_row_idx, pair_idx, 
+                    work_buf, sub_pair, J_row[node]
+                );
+                H2P_int_vec_gather(pair_idx, sub_pair, J_pair[node]);
+            }  // End of j loop
+        }  // End of "#pragma omp parallel"
         
         // B. Update skeleton points after the compression at the i-th level.
         //    At the (i-1)-th level, only need to consider overlapping FF shell pairs
