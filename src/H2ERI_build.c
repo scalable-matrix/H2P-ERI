@@ -672,7 +672,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         }
         if (J_row[i]  == NULL) H2P_int_vec_init(&J_row[i], 1);
         if (J_pair[i] == NULL) H2P_int_vec_init(&J_pair[i], 1);
-        printf("%4d, %4d\n", U[i]->nrow, U[i]->ncol);
+        //printf("%4d, %4d\n", U[i]->nrow, U[i]->ncol);
     }
 }
 
@@ -683,7 +683,180 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
 //   h2eri : H2ERI structure with H2 generator blocks
 void H2ERI_build_B(H2ERI_t h2eri)
 {
+    H2Pack_t h2pack = h2eri->h2pack;
+    int n_thread          = h2pack->n_thread;
+    int n_node            = h2pack->n_node;
+    int n_point           = h2pack->n_point;
+    int n_r_adm_pair      = h2pack->n_r_adm_pair;
+    int *r_adm_pairs      = h2pack->r_adm_pairs;
+    int *node_level       = h2pack->node_level;
+    int *cluster          = h2pack->cluster;
+    int *unc_sp_nbfp      = h2eri->unc_sp_nbfp;
+    int *unc_sp_bfp_sidx  = h2eri->unc_sp_bfp_sidx;
+    int *index_seq        = h2eri->index_seq;
+    multi_sp_t    *unc_sp = h2eri->unc_sp;
+    H2P_int_vec_t B_blk   = h2pack->B_blk;
+    H2P_int_vec_t *J_pair = h2eri->J_pair;
+    H2P_int_vec_t *J_row  = h2eri->J_row;
     
+    // 1. Allocate B
+    h2pack->n_B = n_r_adm_pair;
+    h2pack->B_nrow = (int*)    malloc(sizeof(int)    * n_r_adm_pair);
+    h2pack->B_ncol = (int*)    malloc(sizeof(int)    * n_r_adm_pair);
+    h2pack->B_ptr  = (size_t*) malloc(sizeof(size_t) * (n_r_adm_pair + 1));
+    int    *B_nrow = h2pack->B_nrow;
+    int    *B_ncol = h2pack->B_ncol;
+    size_t *B_ptr  = h2pack->B_ptr;
+    assert(h2pack->B_nrow != NULL && h2pack->B_ncol != NULL && h2pack->B_ptr != NULL);
+    
+    // 2. Partition B matrices into multiple blocks s.t. each block has approximately
+    //    the same workload (total size of B matrices in a block)
+    B_ptr[0] = 0;
+    size_t B_total_size = 0;
+    H2P_int_vec_t *J = h2pack->J;
+    h2pack->node_n_r_adm = (int*) malloc(sizeof(int) * n_node);
+    assert(h2pack->node_n_r_adm != NULL);
+    int *node_n_r_adm = h2pack->node_n_r_adm;
+    memset(node_n_r_adm, 0, sizeof(int) * n_node);
+    for (int i = 0; i < n_r_adm_pair; i++)
+    {
+        int node0  = r_adm_pairs[2 * i];
+        int node1  = r_adm_pairs[2 * i + 1];
+        int level0 = node_level[node0];
+        int level1 = node_level[node1];
+        node_n_r_adm[node0]++;
+        node_n_r_adm[node1]++;
+        if (level0 == level1)
+        {
+            B_nrow[i] = J_row[node0]->length;
+            B_ncol[i] = J_row[node1]->length;
+        }
+        if (level0 > level1)
+        {
+            int s_index1 = cluster[2 * node1];
+            int e_index1 = cluster[2 * node1 + 1];
+            B_nrow[i] = J_row[node0]->length;
+            B_ncol[i] = unc_sp_bfp_sidx[e_index1 + 1] - unc_sp_bfp_sidx[s_index1];
+        }
+        if (level0 < level1)
+        {
+            int s_index0 = cluster[2 * node0];
+            int e_index0 = cluster[2 * node0 + 1];
+            B_nrow[i] = unc_sp_bfp_sidx[e_index0 + 1] - unc_sp_bfp_sidx[s_index0];
+            B_ncol[i] = J_row[node1]->length;
+        }
+        size_t Bi_size = (size_t) B_nrow[i] * (size_t) B_ncol[i];
+        //Bi_size = (Bi_size + N_DTYPE_64B - 1) / N_DTYPE_64B * N_DTYPE_64B;
+        B_total_size += Bi_size;
+        B_ptr[i + 1] = Bi_size;
+        // Add statistic info
+        h2pack->mat_size[4] += 2 * (B_nrow[i] * B_ncol[i]);
+        h2pack->mat_size[4] += 2 * (B_nrow[i] + B_ncol[i]);
+    }
+    H2P_partition_workload(n_r_adm_pair, B_ptr + 1, B_total_size, n_thread * BD_NTASK_THREAD, B_blk);
+    for (int i = 1; i <= n_r_adm_pair; i++) B_ptr[i] += B_ptr[i - 1];
+    h2pack->mat_size[1] = B_total_size;
+    
+    // 3. Generate B matrices
+    h2pack->B_data = (DTYPE*) H2P_malloc_aligned(sizeof(DTYPE) * B_total_size);
+    assert(h2pack->B_data != NULL);
+    DTYPE *B_data = h2pack->B_data;
+    const int n_B_blk = B_blk->length;
+    #pragma omp parallel num_threads(n_thread)
+    {
+        int tid = omp_get_thread_num();
+        H2P_dense_mat_t tmpB = h2pack->tb[tid]->mat0;
+        simint_buff_t buff = h2eri->simint_buffs[tid];
+        
+        h2pack->tb[tid]->timer = -H2P_get_wtime_sec();
+        #pragma omp for schedule(dynamic) nowait
+        for (int i_blk = 0; i_blk < n_B_blk; i_blk++)
+        {
+            int blk_s_index = B_blk->data[i_blk];
+            int blk_e_index = B_blk->data[i_blk + 1];
+            for (int i = blk_s_index; i < blk_e_index; i++)
+            {
+                int node0  = r_adm_pairs[2 * i];
+                int node1  = r_adm_pairs[2 * i + 1];
+                int level0 = node_level[node0];
+                int level1 = node_level[node1];
+                
+                // (1) Two nodes are of the same level, compress on both sides
+                if (level0 == level1)
+                {
+                    int tmpB_nrow  = H2ERI_gather_sum(unc_sp_nbfp, J_pair[node0]);
+                    int tmpB_ncol  = H2ERI_gather_sum(unc_sp_nbfp, J_pair[node1]);
+                    int n_bra_pair = J_pair[node0]->length;
+                    int n_ket_pair = J_pair[node1]->length;
+                    int *bra_idx   = J_pair[node0]->data;
+                    int *ket_idx   = J_pair[node1]->data;
+                    H2P_dense_mat_resize(tmpB, tmpB_nrow, tmpB_ncol);
+                    H2ERI_calc_ERI_pairs_to_mat(
+                        unc_sp, n_bra_pair, n_ket_pair, 
+                        bra_idx, ket_idx, buff, tmpB->data, tmpB->ncol
+                    );
+                    H2P_dense_mat_select_rows   (tmpB, J_row[node0]);
+                    H2P_dense_mat_select_columns(tmpB, J_row[node1]);
+                }
+                
+                // (2) node1 is a leaf node and its level is higher than node0's level, 
+                //     only compress on node0's side
+                if (level0 > level1)
+                {
+                    int tmpB_nrow  = H2ERI_gather_sum(unc_sp_nbfp, J_pair[node0]);
+                    int tmpB_ncol  = B_ncol[i];
+                    int s_index1   = cluster[2 * node1];
+                    int e_index1   = cluster[2 * node1 + 1];
+                    int n_bra_pair = J_pair[node0]->length;
+                    int n_ket_pair = e_index1 - s_index1 + 1;
+                    int *bra_idx   = J_pair[node0]->data;
+                    int *ket_idx   = index_seq + s_index1;
+                    H2P_dense_mat_resize(tmpB, tmpB_nrow, tmpB_ncol);
+                    H2ERI_calc_ERI_pairs_to_mat(
+                        unc_sp, n_bra_pair, n_ket_pair, 
+                        bra_idx, ket_idx, buff, tmpB->data, tmpB->ncol
+                    );
+                    H2P_dense_mat_select_rows(tmpB, J_row[node0]);
+                }
+                
+                // (3) node0 is a leaf node and its level is higher than node1's level, 
+                //     only compress on node1's side
+                if (level0 < level1)
+                {
+                    int tmpB_nrow  = B_nrow[i];
+                    int tmpB_ncol  = H2ERI_gather_sum(unc_sp_nbfp, J_pair[node1]);
+                    int s_index0   = cluster[2 * node0];
+                    int e_index0   = cluster[2 * node0 + 1];
+                    int n_bra_pair = e_index0 - s_index0 + 1;
+                    int n_ket_pair = J_pair[node1]->length;
+                    int *bra_idx   = index_seq + s_index0;
+                    int *ket_idx   = J_pair[node1]->data;
+                    H2P_dense_mat_resize(tmpB, tmpB_nrow, tmpB_ncol);
+                    H2ERI_calc_ERI_pairs_to_mat(
+                        unc_sp, n_bra_pair, n_ket_pair, 
+                        bra_idx, ket_idx, buff, tmpB->data, tmpB->ncol
+                    );
+                    H2P_dense_mat_select_columns(tmpB, J_row[node1]);
+                }
+                
+                memcpy(B_data + B_ptr[i], tmpB->data, sizeof(double) * tmpB->nrow * tmpB->ncol);
+            }  // End of i loop
+        }  // End of i_blk loop
+        h2pack->tb[tid]->timer += H2P_get_wtime_sec();
+    }  // End of "pragma omp parallel"
+
+    #ifdef PROFILING_OUTPUT
+    double max_t = 0.0, avg_t = 0.0, min_t = 1145141919.0;
+    for (int i = 0; i < n_thread; i++)
+    {
+        double thread_i_timer = h2pack->tb[i]->timer;
+        avg_t += thread_i_timer;
+        max_t = MAX(max_t, thread_i_timer);
+        min_t = MIN(min_t, thread_i_timer);
+    }
+    avg_t /= (double) n_thread;
+    printf("[PROFILING] Build B: min/avg/max thread wall-time = %.3lf, %.3lf, %.3lf (s)\n", min_t, avg_t, max_t);
+    #endif
 }
 
 // Build dense blocks in the original matrices
@@ -764,9 +937,9 @@ void H2ERI_build_D(H2ERI_t h2eri)
     for (int i = 1; i <= n_leaf_node + n_r_inadm_pair; i++) D_ptr[i] += D_ptr[i - 1];
     h2pack->mat_size[2] = D0_total_size + D1_total_size;
     
-    h2pack->D_data = (DTYPE*) H2P_malloc_aligned(sizeof(DTYPE) * (D0_total_size + D1_total_size));
+    h2pack->D_data = (double*) H2P_malloc_aligned(sizeof(double) * (D0_total_size + D1_total_size));
     assert(h2pack->D_data != NULL);
-    DTYPE *D_data = h2pack->D_data;
+    double *D_data = h2pack->D_data;
     const int n_D0_blk = D_blk0->length;
     const int n_D1_blk = D_blk1->length;
     #pragma omp parallel num_threads(n_thread)
@@ -789,7 +962,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
                 int e_index = cluster[2 * node + 1];
                 int node_npts = e_index - s_index + 1;
                 int ld_Di = D_ncol[i];
-                DTYPE *Di = D_data + D_ptr[i];
+                double *Di = D_data + D_ptr[i];
                 int *bra_idx = index_seq + s_index;
                 int *ket_idx = bra_idx;
                 H2ERI_calc_ERI_pairs_to_mat(
@@ -816,7 +989,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
                 int node0_npts = e_index0 - s_index0 + 1;
                 int node1_npts = e_index1 - s_index1 + 1;
                 int ld_Di = D_ncol[i + n_leaf_node];
-                DTYPE *Di = D_data + D_ptr[i + n_leaf_node];
+                double *Di = D_data + D_ptr[i + n_leaf_node];
                 int *bra_idx = index_seq + s_index0;
                 int *ket_idx = index_seq + s_index1;
                 H2ERI_calc_ERI_pairs_to_mat(
