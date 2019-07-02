@@ -24,55 +24,26 @@ int main(int argc, char **argv)
     // 4. Build H2 representation for ERI tensor
     H2ERI_build(h2eri);
     
-    double *bt = h2eri->h2pack->timers;
-    printf("%.3lf, %.3lf, %.3lf (s)\n", bt[1], bt[2], bt[3]);
-    int UB, idx;
-    FILE *ouf;
-    H2P_dense_mat_t *U = h2eri->h2pack->U;
-    H2P_int_vec_t *J_row  = h2eri->J_row;
-    H2P_int_vec_t *J_pair = h2eri->J_pair;
-    while (1)
+    int num_bf = h2eri->num_bf;
+    double *den_mat = (double *) malloc(sizeof(double) * num_bf * num_bf);
+    double *J_mat   = (double *) malloc(sizeof(double) * num_bf * num_bf);
+    for (int i = 0; i < num_bf; i++)
     {
-        printf("U(0) or B(1): ");
-        scanf("%d", &UB);
-        printf("idx: ");
-        scanf("%d", &idx);
-        if (UB == 0)
-        {
-            ouf = fopen("add_Ui.m", "w");
-            fprintf(ouf, "Ui_c = [\n");
-            for (int i = 0; i < U[idx]->nrow; i++)
-            {
-                double *U_row = U[idx]->data + i * U[idx]->ld;
-                for (int j = 0; j < U[idx]->ncol; j++)
-                    fprintf(ouf, "% .15lf ", U_row[j]);
-                fprintf(ouf, "\n");
-            }
-            fprintf(ouf, "];\n");
-            fclose(ouf);
-            
-            printf("J_pair: ");
-            for (int i = 0; i < J_pair[idx]->length; i++) printf("%d, ", J_pair[idx]->data[i]+1);
-            printf("\nJ_row: ");
-            for (int i = 0; i < J_row[idx]->length; i++) printf("%d, ", J_row[idx]->data[i]+1);
-            printf("\n");
-        } else {
-            ouf = fopen("add_Bi.m", "w");
-            fprintf(ouf, "Bi_c = [\n");
-            int Bi_nrow = h2eri->h2pack->B_nrow[idx];
-            int Bi_ncol = h2eri->h2pack->B_ncol[idx];
-            double *Bi = h2eri->h2pack->B_data + h2eri->h2pack->B_ptr[idx];
-            for (int i = 0; i < Bi_nrow; i++)
-            {
-                double *B_row = Bi + i * Bi_ncol;
-                for (int j = 0; j < Bi_ncol; j++)
-                    fprintf(ouf, "% .15lf ", B_row[j]);
-                fprintf(ouf, "\n");
-            }
-            fprintf(ouf, "];\n");
-            fclose(ouf);
-        }
+        double *dem_mat_row = den_mat + i * num_bf;
+        for (int j = 0; j < num_bf; j++)
+            dem_mat_row[j] = (double) (i + j);
     }
+    
+    H2ERI_build_Coulomb(h2eri, den_mat, J_mat);
+    FILE *ouf = fopen("add_c_x.m", "w");
+    fprintf(ouf, "c_x = [\n");
+    for (int i = 0; i < h2eri->num_unc_sp_bfp; i++)
+        fprintf(ouf, "%lf\n", h2eri->unc_denmat_x[i]);
+    fprintf(ouf, "];");
+    fclose(ouf);
+    
+    free(J_mat);
+    free(den_mat);
     
     simint_finalize();
     return 0;

@@ -126,6 +126,7 @@ void H2ERI_calc_bf_bfp_info(H2ERI_t h2eri)
         h2eri->unc_sp_nbfp[i] = nbfp;
         h2eri->unc_sp_bfp_sidx[i + 1] = h2eri->unc_sp_bfp_sidx[i] + nbfp;
     }
+    h2eri->num_unc_sp_bfp = h2eri->unc_sp_bfp_sidx[num_unc_sp];
 }
 
 // Calculate the max extent of shell pairs in each H2 box

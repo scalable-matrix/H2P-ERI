@@ -19,4 +19,7 @@
 // H2ERI H2 construction
 #include "H2ERI_build.h"
 
+// H2ERI Coulomb matrix construction
+#include "H2ERI_build_Coulomb.h"
+
 #endif

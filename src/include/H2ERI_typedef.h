@@ -18,6 +18,7 @@ struct H2ERI
     int     nshell;              // Number of contracted shells (from input file)
     int     num_bf;              // Number of basis functions in the system, == shell_bf_sidx[nshell]
     int     num_unc_sp;          // Number of fully uncontracted shell pairs (FUSP)
+    int     num_unc_sp_bfp;      // Number of FUSP basis function pairs, == unc_sp_bfp_sidx[num_unc_sp]
     int     pp_npts_layer;       // Number of proxy points on each layer
     int     pp_nlayer_ext;       // Number of proxy point layers on each extent
     int     *shell_bf_sidx;      // Array, size nshell, indices of each shell's first basis function
@@ -30,6 +31,8 @@ struct H2ERI
     double *unc_sp_center;       // Array, size 3 * num_unc_sp, each column is a FUSP's center
     double *unc_sp_extent;       // Array, size num_unc_sp, extents of FUSP
     double *box_extent;          // Array, size h2pack->n_node, extents of each H2 node box
+    double *unc_denmat_x;        // Array, size num_unc_sp_bfp, uncontracted density matrix as a vector
+    double *H2_matvec_y;         // Array, size num_unc_sp_bfp, H2 matvec result 
     shell_t    *shells;          // Array, size nshell, contracted shells
     shell_t    *unc_sp_shells;   // Array, size 2 * num_unc_sp, each column is a FUSP
     multi_sp_t *unc_sp;          // Array, size num_unc_sp, FUSP
