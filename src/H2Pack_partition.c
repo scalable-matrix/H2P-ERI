@@ -390,10 +390,12 @@ void H2P_calc_reduced_adm_pairs(H2Pack_t h2pack, const DTYPE alpha, const int n0
             H2P_int_vec_push_back(partition_vars.r_adm_pairs, n1);
             //partition_vars.min_adm_level  = MIN(partition_vars.min_adm_level,  level_n0);
             //partition_vars.min_adm_level  = MIN(partition_vars.min_adm_level,  level_n1);
-            int min_level_n01 = MIN(level_n0, level_n1);
-            partition_vars.min_adm_level  = MIN(partition_vars.min_adm_level,  min_level_n01);
-            partition_vars.max_adm_height = MAX(partition_vars.max_adm_height, height_n0);
-            partition_vars.max_adm_height = MAX(partition_vars.max_adm_height, height_n1);
+            //partition_vars.max_adm_height = MAX(partition_vars.max_adm_height, height_n0);
+            //partition_vars.max_adm_height = MAX(partition_vars.max_adm_height, height_n1);
+            int max_level_n01  = MAX(level_n0,  level_n1);
+            int min_height_n01 = MIN(height_n0, height_n1);
+            partition_vars.min_adm_level  = MIN(partition_vars.min_adm_level,  max_level_n01);
+            partition_vars.max_adm_height = MAX(partition_vars.max_adm_height, min_height_n01);
             return;
         }
         
