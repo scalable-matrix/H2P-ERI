@@ -94,10 +94,12 @@ void H2ERI_rotate_shells(H2ERI_t h2eri)
 //   h2eri->shells  : Array, size nshell, original shells
 //   h2eri->scr_tol : Schwarz screening tolerance, typically 1e-10
 // Output parameters:
-//   h2eri->num_unc_sp    : Number of uncontracted shell pairs that survives screening
-//   h2eri->unc_sp_shells : Array, size num_unc_sp * 2, uncontracted screened shell pairs
-//   h2eri->unc_sp_center : Array, size 3 * num_unc_sp, each column is the center 
-//                          coordinate of a new uncontracted shell pair
+//   h2eri->num_unc_sp       : Number of uncontracted shell pairs that survives screening
+//   h2eri->unc_sp_shells    : Array, size 2 * num_unc_sp, uncontracted screened shell pairs
+//   h2eri->unc_sp_center    : Array, size 3 * num_unc_sp, each column is the center 
+//                             coordinate of a new uncontracted shell pair
+//   h2eri->unc_sp_shell_idx : Array, size 2 * num_unc_sp, each row is the contracted 
+//                             shell indices of a FUSP
 void H2ERI_uncontract_shell_pairs(H2ERI_t h2eri)
 {
     int     nshell  = h2eri->nshell;
@@ -151,11 +153,14 @@ void H2ERI_uncontract_shell_pairs(H2ERI_t h2eri)
     }
     
     h2eri->num_unc_sp = num_unc_sp;
-    h2eri->unc_sp_center = (double *) malloc(sizeof(double) * num_unc_sp * 3);
-    h2eri->unc_sp_shells = (shell_t *) malloc(sizeof(shell_t) * num_unc_sp * 2);
+    h2eri->unc_sp_shells    = (shell_t *) malloc(sizeof(shell_t) * num_unc_sp * 2);
+    h2eri->unc_sp_center    = (double *)  malloc(sizeof(double)  * num_unc_sp * 3);
+    h2eri->unc_sp_shell_idx = (int *)     malloc(sizeof(int)     * num_unc_sp * 2);
     assert(h2eri->unc_sp_center != NULL && h2eri->unc_sp_shells != NULL);
-    double  *unc_sp_center = h2eri->unc_sp_center;
-    shell_t *unc_sp_shells = h2eri->unc_sp_shells;
+    assert(h2eri->unc_sp_shell_idx != NULL);
+    double  *unc_sp_center    = h2eri->unc_sp_center;
+    shell_t *unc_sp_shells    = h2eri->unc_sp_shells;
+    int     *unc_sp_shell_idx = h2eri->unc_sp_shell_idx;
     
     for (int i = 0; i < num_unc_sp * 2; i++)
     {
@@ -200,6 +205,9 @@ void H2ERI_uncontract_shell_pairs(H2ERI_t h2eri)
                 unc_sp_shells[cidx0].coef[0] *= sqrt2;
                 unc_sp_shells[cidx1].coef[0] *= sqrt2;
             }
+            
+            unc_sp_shell_idx[cidx0] = shell_idx_i;
+            unc_sp_shell_idx[cidx1] = shell_idx_j;
             
             cidx0++;
             cidx1++;

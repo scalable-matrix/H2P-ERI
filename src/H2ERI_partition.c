@@ -38,29 +38,51 @@ void H2ERI_partition_unc_sp_centers(H2ERI_t h2eri, int max_leaf_points, double m
     // 2. Permute the uncontracted shell pairs and their extents according to 
     // the permutation of their center coordinate
     int *coord_idx = h2eri->h2pack->coord_idx;
-    shell_t *unc_sp_shells = h2eri->unc_sp_shells;
-    shell_t *unc_sp_new = (shell_t *) malloc(sizeof(shell_t) * num_unc_sp * 2);
-    double *unc_sp_extent = h2eri->unc_sp_extent;
-    double *unc_sp_extent_new = (double *) malloc(sizeof(double) * num_unc_sp);
-    assert(unc_sp_new != NULL && unc_sp_extent_new != NULL);
+    shell_t *unc_sp_shells    = h2eri->unc_sp_shells;
+    double  *unc_sp_extent    = h2eri->unc_sp_extent;
+    int     *unc_sp_shell_idx = h2eri->unc_sp_shell_idx;
+    shell_t *unc_sp_shells_new    = (shell_t *) malloc(sizeof(shell_t) * num_unc_sp * 2);
+    double  *unc_sp_extent_new    = (double *)  malloc(sizeof(double)  * num_unc_sp);
+    int     *unc_sp_shell_idx_new = (int *)     malloc(sizeof(int)     * num_unc_sp * 2);
+    assert(unc_sp_shells_new != NULL && unc_sp_extent_new != NULL);
+    assert(unc_sp_shell_idx_new != NULL);
     for (int i = 0; i < num_unc_sp; i++)
     {
         int cidx_i = coord_idx[i];
         int i20 = i, i21 = i + num_unc_sp;
         int cidx_i20 = cidx_i, cidx_i21 = cidx_i + num_unc_sp;
         unc_sp_extent_new[i] = unc_sp_extent[cidx_i];
-        simint_initialize_shell(&unc_sp_new[i20]);
-        simint_initialize_shell(&unc_sp_new[i21]);
-        simint_allocate_shell(1, &unc_sp_new[i20]);
-        simint_allocate_shell(1, &unc_sp_new[i21]);
-        simint_copy_shell(&unc_sp_shells[cidx_i20], &unc_sp_new[i20]);
-        simint_copy_shell(&unc_sp_shells[cidx_i21], &unc_sp_new[i21]);
+        simint_initialize_shell(&unc_sp_shells_new[i20]);
+        simint_initialize_shell(&unc_sp_shells_new[i21]);
+        simint_allocate_shell(1, &unc_sp_shells_new[i20]);
+        simint_allocate_shell(1, &unc_sp_shells_new[i21]);
+        simint_copy_shell(&unc_sp_shells[cidx_i20], &unc_sp_shells_new[i20]);
+        simint_copy_shell(&unc_sp_shells[cidx_i21], &unc_sp_shells_new[i21]);
+        unc_sp_shell_idx_new[i20] = unc_sp_shell_idx[cidx_i20];
+        unc_sp_shell_idx_new[i21] = unc_sp_shell_idx[cidx_i21];
     }
     CMS_destroy_shells(num_unc_sp * 2, h2eri->unc_sp_shells);
     free(h2eri->unc_sp_shells);
     free(h2eri->unc_sp_extent);
-    h2eri->unc_sp_shells = unc_sp_new;
-    h2eri->unc_sp_extent = unc_sp_extent_new;
+    free(h2eri->unc_sp_shell_idx);
+    h2eri->unc_sp_shells    = unc_sp_shells_new;
+    h2eri->unc_sp_extent    = unc_sp_extent_new;
+    h2eri->unc_sp_shell_idx = unc_sp_shell_idx_new;
+    
+    // 3. Initialize FUSP. Note that Simint MATLAB code uses (NM|QP) instead of
+    // the normal (MN|PQ) order for ERI. We follow this for the moment.
+    h2eri->unc_sp    = (multi_sp_t *) malloc(sizeof(multi_sp_t) * num_unc_sp);
+    h2eri->index_seq = (int *)        malloc(sizeof(int)        * num_unc_sp);
+    assert(h2eri->unc_sp != NULL && h2eri->index_seq != NULL);
+    for (int i = 0; i < num_unc_sp; i++)
+    {
+        h2eri->index_seq[i] = i;
+        simint_initialize_multi_shellpair(&h2eri->unc_sp[i]);
+        simint_create_multi_shellpair(
+            1, &h2eri->unc_sp_shells[i + num_unc_sp], 
+            1, &h2eri->unc_sp_shells[i], &h2eri->unc_sp[i], 0
+        );
+    }
 }
 
 // Calculate the basis function indices information of shells and shell pairs 
@@ -68,16 +90,30 @@ void H2ERI_partition_unc_sp_centers(H2ERI_t h2eri, int max_leaf_points, double m
 //   h2eri->num_unc_sp : Number of shell pairs
 //   h2eri->unc_sp     : Array, size num_sp * 2, each row is a shell pair
 // Output parameters:
+//   h2eri->shell_bf_sidx   : Array, size nshell, indices of each shell's first basis function
 //   h2eri->unc_sp_nbfp     : Array, size num_unc_sp, number of basis function pairs of each FUSP
 //   h2eri->unc_sp_bfp_sidx : Array, size num_unc_sp+1, indices of each FUSP first basis function pair
-void H2ERI_calc_unc_sp_bfp_sidx(H2ERI_t h2eri)
+void H2ERI_calc_bf_bfp_info(H2ERI_t h2eri)
 {
+    int nshell = h2eri->nshell;
     int num_unc_sp = h2eri->num_unc_sp;
+    shell_t *shells = h2eri->shells;
     shell_t *unc_sp_shells = h2eri->unc_sp_shells;
     
+    h2eri->shell_bf_sidx   = (int *) malloc(sizeof(int) * (nshell + 1));
     h2eri->unc_sp_nbfp     = (int *) malloc(sizeof(int) * num_unc_sp);
     h2eri->unc_sp_bfp_sidx = (int *) malloc(sizeof(int) * (num_unc_sp + 1));
-    assert(h2eri->unc_sp_nbfp != NULL && h2eri->unc_sp_bfp_sidx != NULL);
+    assert(h2eri->shell_bf_sidx != NULL && h2eri->unc_sp_nbfp != NULL);
+    assert(h2eri->unc_sp_bfp_sidx != NULL);
+    
+    h2eri->shell_bf_sidx[0] = 0;
+    for (int i = 0; i < nshell; i++)
+    {
+        int am = shells[i].am;
+        h2eri->shell_bf_sidx[i + 1] = h2eri->shell_bf_sidx[i] + NCART(am);
+        h2eri->max_am = MAX(h2eri->max_am, am);
+    }
+    h2eri->num_bf = h2eri->shell_bf_sidx[nshell];
     
     h2eri->unc_sp_bfp_sidx[0] = 0;
     for (int i = 0; i < num_unc_sp; i++)
@@ -89,8 +125,6 @@ void H2ERI_calc_unc_sp_bfp_sidx(H2ERI_t h2eri)
         int nbfp = nbf0 * nbf1;
         h2eri->unc_sp_nbfp[i] = nbfp;
         h2eri->unc_sp_bfp_sidx[i + 1] = h2eri->unc_sp_bfp_sidx[i] + nbfp;
-        h2eri->max_am = MAX(h2eri->max_am, am0);
-        h2eri->max_am = MAX(h2eri->max_am, am1);
     }
 }
 
@@ -225,8 +259,8 @@ void H2ERI_calc_mat_cluster(H2ERI_t h2eri)
 void H2ERI_partition(H2ERI_t h2eri)
 {
     H2ERI_partition_unc_sp_centers(h2eri, 0, 0.0);
-    H2ERI_calc_unc_sp_bfp_sidx(h2eri);
-    H2ERI_calc_box_extent(h2eri);
+    H2ERI_calc_bf_bfp_info(h2eri);
+    H2ERI_calc_box_extent (h2eri);
     H2ERI_calc_mat_cluster(h2eri);
     
     // Initialize thread local Simint buffer
@@ -235,20 +269,4 @@ void H2ERI_partition(H2ERI_t h2eri)
     assert(h2eri->simint_buffs != NULL);
     for (int i = 0; i < n_thread; i++)
         CMS_init_Simint_buff(h2eri->max_am, &h2eri->simint_buffs[i]);
-    
-    // Initialize FUSP. Note that Simint MATLAB code uses (NM|QP) instead of
-    // the normal (MN|PQ) order for ERI. We follow this for the moment.
-    int num_unc_sp = h2eri->num_unc_sp;
-    h2eri->unc_sp    = (multi_sp_t *) malloc(sizeof(multi_sp_t) * num_unc_sp);
-    h2eri->index_seq = (int *)        malloc(sizeof(int)        * num_unc_sp);
-    assert(h2eri->unc_sp != NULL && h2eri->index_seq != NULL);
-    for (int i = 0; i < num_unc_sp; i++)
-    {
-        h2eri->index_seq[i] = i;
-        simint_initialize_multi_shellpair(&h2eri->unc_sp[i]);
-        simint_create_multi_shellpair(
-            1, &h2eri->unc_sp_shells[i + num_unc_sp], 
-            1, &h2eri->unc_sp_shells[i], &h2eri->unc_sp[i], 0
-        );
-    }
 }

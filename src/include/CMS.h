@@ -37,6 +37,12 @@ void CMS_read_mol_file(const char *mol_fname, int *nshell_, shell_t **shells_);
 //   shells : Array, all shells stored in Simint shell structure
 void CMS_destroy_shells(const int nshell, shell_t *shells);
 
+// Destroy all Simint shell pairs 
+// Input parameters:
+//   nshell : Total number of shells
+//   shells : Array, all shells stored in Simint shell structure
+void CMS_destroy_shell_pairs(const int num_sp, multi_sp_t *sp);
+
 // Print all shell information, for debugging
 // Input parameters:
 //   nshell : Total number of shells

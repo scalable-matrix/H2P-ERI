@@ -128,6 +128,13 @@ void CMS_destroy_shells(const int nshell, shell_t *shells)
         simint_free_shell(&shells[i]);
 }
 
+// Destroy all Simint shell pairs 
+void CMS_destroy_shell_pairs(const int num_sp, multi_sp_t *sp)
+{
+    for (int i = 0; i < num_sp; i++)
+        simint_free_multi_shellpair(&sp[i]);
+}
+
 // Print all shell information, for debugging
 void CMS_print_shells(const int nshell, shell_t *shells)
 {

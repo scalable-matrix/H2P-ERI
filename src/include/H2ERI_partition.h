@@ -18,6 +18,7 @@ extern "C" {
 //   h2eri->h2pack          : H2Pack structure with point partitioning info
 //   h2eri->unc_sp_center   : Array, size 3 * num_unc_sp, sorted centers of FUSP
 //   h2eri->unc_sp_extent   : Array, size num_unc_sp, sorted extents of FUSP
+//   h2eri->shell_bf_sidx   : Array, size nshell, indices of each shell's first basis function
 //   h2eri->unc_sp_nbfp     : Array, size num_unc_sp, number of basis function pairs of each FUSP
 //   h2eri->unc_sp_bfp_sidx : Array, size num_unc_sp+1, indices of each FUSP first basis function pair
 //   h2eri->box_extent      : Array, size h2pack->n_node, extent of each H2 node box
