@@ -35,10 +35,15 @@ int main(int argc, char **argv)
     }
     
     H2ERI_build_Coulomb(h2eri, den_mat, J_mat);
-    FILE *ouf = fopen("add_c_x.m", "w");
-    fprintf(ouf, "c_x = [\n");
-    for (int i = 0; i < h2eri->num_unc_sp_bfp; i++)
-        fprintf(ouf, "%lf\n", h2eri->unc_denmat_x[i]);
+    FILE *ouf = fopen("add_c_y.m", "w");
+    fprintf(ouf, "c_y = [\n");
+    for (int i = 0; i < num_bf; i++)
+    {
+        double *J_mat_row = J_mat + i * num_bf;
+        for (int j = 0; j < num_bf; j++)
+            fprintf(ouf, "%.2lf ", J_mat_row[j]);
+        fprintf(ouf, "\n");
+    }
     fprintf(ouf, "];");
     fclose(ouf);
     
