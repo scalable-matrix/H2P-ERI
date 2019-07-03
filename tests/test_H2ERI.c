@@ -23,7 +23,8 @@ int main(int argc, char **argv)
     
     // 4. Build H2 representation for ERI tensor
     H2ERI_build(h2eri);
-    
+
+    // 5. Generate a symmetric density matrix and save it to file
     int num_bf = h2eri->num_bf;
     double *den_mat = (double *) malloc(sizeof(double) * num_bf * num_bf);
     double *J_mat   = (double *) malloc(sizeof(double) * num_bf * num_bf);
@@ -31,21 +32,37 @@ int main(int argc, char **argv)
     {
         double *dem_mat_row = den_mat + i * num_bf;
         for (int j = 0; j < num_bf; j++)
-            dem_mat_row[j] = (double) (i + j);
+            dem_mat_row[j] = (double) ((i + j) % 11);
     }
     
+    FILE *ouf = fopen("add_c_x.m", "w");
+    fprintf(ouf, "c_x = [\n");
+    for (int i = 0; i < num_bf; i++)
+    {
+        double *dem_mat_row = den_mat + i * num_bf;
+        for (int j = 0; j < num_bf; j++)
+            fprintf(ouf, "%.16lf ", dem_mat_row[j]);
+        fprintf(ouf, "\n");
+    }
+    fprintf(ouf, "];");
+    fclose(ouf);
+    
+    // 6. Construct the Coulomb matrix and save it to file
     H2ERI_build_Coulomb(h2eri, den_mat, J_mat);
-    FILE *ouf = fopen("add_c_y.m", "w");
+    
+    ouf = fopen("add_c_y.m", "w");
     fprintf(ouf, "c_y = [\n");
     for (int i = 0; i < num_bf; i++)
     {
         double *J_mat_row = J_mat + i * num_bf;
         for (int j = 0; j < num_bf; j++)
-            fprintf(ouf, "%.2lf ", J_mat_row[j]);
+            fprintf(ouf, "%.16lf ", J_mat_row[j]);
         fprintf(ouf, "\n");
     }
     fprintf(ouf, "];");
     fclose(ouf);
+    
+    H2P_print_statistic(h2eri->h2pack);
     
     free(J_mat);
     free(den_mat);

@@ -861,7 +861,7 @@ void H2P_matvec_dense_blocks_JIT(H2Pack_t h2pack, const DTYPE *x)
 void H2P_matvec(H2Pack_t h2pack, const DTYPE *x, DTYPE *y)
 {
     double st, et;
-    int n_point  = h2pack->n_point;
+    int krnl_mat_size = h2pack->krnl_mat_size;
     int n_thread = h2pack->n_thread;
     int BD_JIT   = h2pack->BD_JIT;
     
@@ -871,7 +871,7 @@ void H2P_matvec(H2Pack_t h2pack, const DTYPE *x, DTYPE *y)
     {
         int tid = omp_get_thread_num();
         DTYPE *tid_y = h2pack->tb[tid]->y;
-        memset(tid_y, 0, sizeof(DTYPE) * n_point);
+        memset(tid_y, 0, sizeof(DTYPE) * krnl_mat_size);
     }
     et = H2P_get_wtime_sec();
     h2pack->timers[8] += et - st;
@@ -916,7 +916,7 @@ void H2P_matvec(H2Pack_t h2pack, const DTYPE *x, DTYPE *y)
     {
         int tid = omp_get_thread_num();
         int spos, len;
-        H2P_block_partition(n_point, n_thread, tid, &spos, &len);
+        H2P_block_partition(krnl_mat_size, n_thread, tid, &spos, &len);
         
         DTYPE *y_src = h2pack->tb[0]->y;
         memcpy(y + spos, y_src + spos, sizeof(DTYPE) * len);
@@ -928,7 +928,7 @@ void H2P_matvec(H2Pack_t h2pack, const DTYPE *x, DTYPE *y)
         }
     }
     et = H2P_get_wtime_sec();
-    h2pack->mat_size[7] = (n_thread + 1) * h2pack->n_point;
+    h2pack->mat_size[7] = (n_thread + 1) * h2pack->krnl_mat_size;
     h2pack->timers[8] += et - st;
     
     h2pack->n_matvec++;

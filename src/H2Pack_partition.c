@@ -524,9 +524,12 @@ void H2P_partition_points(
     h2pack->parent[h2pack->root_idx] = -1;  // Root node doesn't have parent
     H2P_tree_node_destroy(root);  // We don't need the linked list H2 tree anymore
     
-    // Set the default mat_cluster the same as cluster.
-    // For tensor kernels, calculate mat_cluster manually.
-    memcpy(h2pack->mat_cluster, h2pack->cluster, sizeof(int) * n_node * 2);
+    // For H2ERI: h2pack->krnl_dim = 1, h2pack->mat_cluster = h2pack->cluster
+    // manually set h2pack->krnl_mat_size.
+    h2pack->krnl_dim = 1;
+    for (int i = 0; i < n_node * 2; i++)
+        h2pack->mat_cluster[i] = h2pack->krnl_dim * h2pack->mat_cluster[i];
+    //h2pack->krnl_mat_size = h2pack->krnl_dim * h2pack->n_point;
     
     // 4. Calculate reduced (in)admissible pairs
     int estimated_n_pair = h2pack->n_node * h2pack->max_child;
@@ -559,7 +562,7 @@ void H2P_partition_points(
     h2pack->tb = (H2P_thread_buf_t*) malloc(sizeof(H2P_thread_buf_t) * h2pack->n_thread);
     assert(h2pack->tb != NULL);
     for (int i = 0; i < h2pack->n_thread; i++)
-        H2P_thread_buf_init(&h2pack->tb[i], n_point);
+        H2P_thread_buf_init(&h2pack->tb[i], h2pack->krnl_mat_size);
     
     et = H2P_get_wtime_sec();
     h2pack->timers[0] = et - st;

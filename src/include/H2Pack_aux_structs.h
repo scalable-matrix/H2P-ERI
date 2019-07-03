@@ -233,10 +233,10 @@ typedef struct H2P_thread_buf* H2P_thread_buf_t;
 
 // Initialize a H2P_thread_buf structure
 // Input parameter:
-//   n_point : Number of points for the kernel matrix
+//   krnl_mat_size : Size of the kernel matrix
 // Output parameter:
 //   thread_buf_ : Initialized H2P_thread_buf structure
-void H2P_thread_buf_init(H2P_thread_buf_t *thread_buf_, const int n_point);
+void H2P_thread_buf_init(H2P_thread_buf_t *thread_buf_, const int krnl_mat_size);
 
 // Destroy a H2P_thread_buf structure
 // Input parameter:

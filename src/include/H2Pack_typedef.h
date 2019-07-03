@@ -33,9 +33,11 @@ struct H2Pack
     // H2 matrix tree flatten representation
     int    n_thread;            // Number of threads
     int    dim;                 // Dimension of point coordinate
+    int    krnl_dim;            // Dimension of kernel function's return value
     int    QR_stop_type;        // Partial QR stop criteria
     int    QR_stop_rank;        // Partial QR maximum rank
     int    n_point;             // Number of points for the kernel matrix
+    int    krnl_mat_size;       // Size of the kernel matrix
     int    max_leaf_points;     // Maximum point in a leaf node's box
     int    n_node;              // Number of nodes in this H2 tree
     int    root_idx;            // Index of the root node (== n_node - 1, save it for convenience)

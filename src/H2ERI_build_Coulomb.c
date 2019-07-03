@@ -142,8 +142,7 @@ void H2ERI_build_Coulomb(H2ERI_t h2eri, const double *den_mat, double *J_mat)
     
     H2ERI_uncontract_den_mat(h2eri, den_mat);
     
+    H2P_matvec(h2eri->h2pack, h2eri->unc_denmat_x, h2eri->H2_matvec_y);
     
-    for (int i = 0; i < h2eri->num_unc_sp_bfp; i++) 
-        h2eri->H2_matvec_y[i] = i;
     H2ERI_contract_H2_matvec(h2eri, J_mat);
 }

@@ -29,6 +29,16 @@ void H2ERI_partition_unc_sp_centers(H2ERI_t h2eri, int max_leaf_points, double m
     double *unc_sp_center = h2eri->unc_sp_center;
     if (max_leaf_points <= 0)   max_leaf_points = 300;
     if (max_leaf_size   <= 0.0) max_leaf_size   = 2.0;
+    // Manually set the kernel matrix size for h2eri->h2pack->tb allocation.
+    shell_t *unc_sp_shells = h2eri->unc_sp_shells;
+    int num_unc_sp_bfp = 0;
+    for (int i = 0; i < num_unc_sp; i++)
+    {
+        int am0  = unc_sp_shells[i].am;
+        int am1  = unc_sp_shells[i + num_unc_sp].am;
+        num_unc_sp_bfp += NCART(am0) * NCART(am1);
+    }
+    h2eri->h2pack->krnl_mat_size = num_unc_sp_bfp; 
     H2P_partition_points(
         h2eri->h2pack, num_unc_sp, unc_sp_center, 
         max_leaf_points, max_leaf_size
@@ -38,7 +48,6 @@ void H2ERI_partition_unc_sp_centers(H2ERI_t h2eri, int max_leaf_points, double m
     // 2. Permute the uncontracted shell pairs and their extents according to 
     // the permutation of their center coordinate
     int *coord_idx = h2eri->h2pack->coord_idx;
-    shell_t *unc_sp_shells    = h2eri->unc_sp_shells;
     double  *unc_sp_extent    = h2eri->unc_sp_extent;
     int     *unc_sp_shell_idx = h2eri->unc_sp_shell_idx;
     shell_t *unc_sp_shells_new    = (shell_t *) malloc(sizeof(shell_t) * num_unc_sp * 2);

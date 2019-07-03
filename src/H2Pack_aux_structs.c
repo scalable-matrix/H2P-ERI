@@ -218,7 +218,7 @@ void H2P_dense_mat_print(H2P_dense_mat_t mat)
 
 // ========================== H2P_thread_buf ========================= //
 
-void H2P_thread_buf_init(H2P_thread_buf_t *thread_buf_, const int n_point)
+void H2P_thread_buf_init(H2P_thread_buf_t *thread_buf_, const int krnl_mat_size)
 {
     H2P_thread_buf_t thread_buf = (H2P_thread_buf_t) malloc(sizeof(struct H2P_thread_buf));
     assert(thread_buf != NULL);
@@ -230,7 +230,7 @@ void H2P_thread_buf_init(H2P_thread_buf_t *thread_buf_, const int n_point)
     H2P_dense_mat_init(&thread_buf->mat0, 1024, 1);
     H2P_dense_mat_init(&thread_buf->mat1, 1024, 1);
     H2P_dense_mat_init(&thread_buf->mat2, 1024, 1);
-    thread_buf->y = (DTYPE*) H2P_malloc_aligned(sizeof(DTYPE) * n_point);
+    thread_buf->y = (DTYPE*) H2P_malloc_aligned(sizeof(DTYPE) * krnl_mat_size);
     assert(thread_buf->y != NULL);
     *thread_buf_ = thread_buf;
 }
