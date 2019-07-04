@@ -13,7 +13,7 @@ int main(int argc, char **argv)
     H2ERI_init(&h2eri, 1e-10, 1e-10, 1e-6);
     
     // 1. Read molecular file
-    CMS_read_mol_file(argv[1], &h2eri->nshell, &h2eri->shells);
+    CMS_read_mol_file(argv[1], &h2eri->natom, &h2eri->nshell, &h2eri->shells);
     
     // 2. Process input shells for H2 partitioning
     H2ERI_process_shells(h2eri);
@@ -48,7 +48,11 @@ int main(int argc, char **argv)
     fclose(ouf);
     
     // 6. Construct the Coulomb matrix and save it to file
-    H2ERI_build_Coulomb(h2eri, den_mat, J_mat);
+    H2ERI_build_Coulomb(h2eri, den_mat, J_mat);  // Warm up
+    h2eri->h2pack->n_matvec = 0;
+    memset(h2eri->h2pack->timers + 4, 0, sizeof(double) * 5);
+    for (int k = 0; k < 10; k++)
+         H2ERI_build_Coulomb(h2eri, den_mat, J_mat);
     
     ouf = fopen("add_c_y.m", "w");
     fprintf(ouf, "c_y = [\n");
@@ -62,7 +66,7 @@ int main(int argc, char **argv)
     fprintf(ouf, "];");
     fclose(ouf);
     
-    H2P_print_statistic(h2eri->h2pack);
+    H2ERI_print_statistic(h2eri);
     
     free(J_mat);
     free(den_mat);

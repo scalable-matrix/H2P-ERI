@@ -380,17 +380,18 @@ void H2ERI_generate_normal_distribution(
     }
 }
 
+// Gather and sum elements in an array
+// Input parameters:
+//   arr : Array
+//   idx : Indices of elements
+// Output parameter:
+//   <return> : Sum result
 int H2ERI_gather_sum(const int *arr, H2P_int_vec_t idx)
 {
     int res = 0;
     for (int i = 0; i < idx->length; i++) 
         res += arr[idx->data[i]];
     return res;
-}
-
-void H2ERI_mark_flags(int *flag, const int n_pos, const int *pos)
-{
-    for (int i = 0; i < n_pos; i++) flag[pos[i]] = 1;
 }
 
 // Build H2 projection matrices using proxy points
@@ -710,14 +711,15 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         for (int j = 0; j < level_i_n_node; j++)
         {
             int node = level_i_nodes[j];
-            H2ERI_mark_flags(skel_flag, J_pair[node]->length, J_pair[node]->data);
+            int *idx = J_pair[node]->data;
+            for (int k = 0; k < J_pair[node]->length; k++) skel_flag[idx[k]] = 1;
         }
         for (int j = 0; j < lvl_n_leaf[i]; j++)
         {
             int leaf_j = lvl_leaf[i * n_leaf_node + j];
             int s_index = cluster[2 * leaf_j];
-            int n_index = cluster[2 * leaf_j + 1] - s_index + 1;
-            H2ERI_mark_flags(skel_flag, n_index, index_seq + s_index);
+            int e_index = cluster[2 * leaf_j + 1];
+            for (int k = s_index; k <= e_index; k++) skel_flag[k] = 1;
         }
     }  // End of i loop
     

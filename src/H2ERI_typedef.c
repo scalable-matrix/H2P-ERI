@@ -82,3 +82,15 @@ void H2ERI_destroy(H2ERI_t h2eri)
     H2P_destroy(h2eri->h2pack);
 }
 
+// Print H2ERI statistic information
+void H2ERI_print_statistic(H2ERI_t h2eri)
+{
+    printf("================ H2ERI molecular system info ================\n");
+    printf("  * Number of atoms                     : %d\n", h2eri->natom);
+    printf("  * Number of shells                    : %d\n", h2eri->nshell);
+    printf("  * Number of basis functions           : %d\n", h2eri->num_bf);
+    printf("  * Number of symm-unique screened FUSP : %d\n", h2eri->num_unc_sp);
+    printf("  * Number of FUSP basis function pairs : %d\n", h2eri->num_unc_sp_bfp);
+    
+    H2P_print_statistic(h2eri->h2pack);
+}

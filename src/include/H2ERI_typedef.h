@@ -14,8 +14,9 @@ extern "C" {
 
 struct H2ERI
 {
-    int     max_am;              // Maximum angular momentum in the system
+    int     natom;               // Number of atoms (from input file)
     int     nshell;              // Number of contracted shells (from input file)
+    int     max_am;              // Maximum angular momentum in the system
     int     num_bf;              // Number of basis functions in the system, == shell_bf_sidx[nshell]
     int     num_unc_sp;          // Number of fully uncontracted shell pairs (FUSP)
     int     num_unc_sp_bfp;      // Number of FUSP basis function pairs, == unc_sp_bfp_sidx[num_unc_sp]
@@ -61,6 +62,11 @@ void H2ERI_init(H2ERI_t *h2eri_, const double scr_tol, const double ext_tol, con
 // Input parameter:
 //   h2eri : H2ERI structure to be destroyed
 void H2ERI_destroy(H2ERI_t h2eri);
+
+// Print H2ERI statistic information
+// Input parameter:
+//   h2eri : H2ERI structure to be destroyed
+void H2ERI_print_statistic(H2ERI_t h2eri);
 
 #ifdef __cplusplus
 }

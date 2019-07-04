@@ -27,9 +27,10 @@ typedef struct simint_buff* simint_buff_t;
 // Input parameter:
 //   mol_fname : .mol file path
 // Output parameters:
+//   *natom_  : Total number of atoms in thr .mol file
 //   *nshell_ : Total number of shells in the .mol file
 //   *shells_ : Array, all shells in the .mol file, stored in Simint shell structure
-void CMS_read_mol_file(const char *mol_fname, int *nshell_, shell_t **shells_);
+void CMS_read_mol_file(const char *mol_fname, int *natom_, int *nshell_, shell_t **shells_);
 
 // Destroy all Simint shells
 // Input parameters:
@@ -70,19 +71,6 @@ void CMS_init_Simint_buff(const int max_am, simint_buff_t *buff_);
 //   buff : Simint buffer stricture to be destroyed 
 void CMS_destroy_Simint_buff(simint_buff_t buff);
 
-// Sum the number of basis function pairs of a FUSP list
-// Input parameters:
-//   unc_sp_shells : Array, size 2 * num_sp, each column is a FUSP
-//   num_unc_sp    : Number of FUSP
-//   num_sp        : Number of shell pairs (N_i M_i|
-//   sp_idx        : Array, size num_sp, FUSP indices
-// Output parameter:
-//   <return> : Total number of basis function pairs of a FUSP list
-int H2ERI_sum_sp_bfp(
-    const shell_t *unc_sp_shells, const int num_unc_sp,
-    const int num_sp, const int *sp_idx
-);
-
 // Calculate shell quartet pairs (N_i M_i|Q_j P_j) and unfold all ERI 
 // results to form a matrix.
 // The ERI result tensor of (N_i M_i|Q_j P_j) will be unfold as a 
@@ -98,11 +86,11 @@ int H2ERI_sum_sp_bfp(
 //   bra_idx    : Array, size n_bra_pair, indices of (N_i M_i| pairs
 //   ket_idx    : Array, size n_ket_pair, indices of |Q_j P_j) pairs
 //   buff       : Initialized Simint buffer stricture
-//   ldm        : Leading dimension of output matrix, should >= 
-//                H2ERI_sum_sp_bfp(unc_sp_shells, num_unc_sp, n_ket_pair, ket_idx)
+//   ldm        : Leading dimension of output matrix, should >=
+//                total number of ket-side shell pairs' basis function pairs
 // Output parameter:
 //   mat : Matrix with unfolded shell quartets ERI results, size >= ldm *
-//         H2ERI_sum_sp_bfp(unc_sp_shells, num_unc_sp, n_bra_pair, bra_idx)
+//         total number of bra-side shell pairs' basis function pairs
 void H2ERI_calc_ERI_pairs_to_mat(
     const multi_sp_t *unc_sp, const int n_bra_pair, const int n_ket_pair,
     const int *bra_idx, const int *ket_idx, simint_buff_t buff, 
@@ -126,7 +114,7 @@ void H2ERI_calc_ERI_pairs_to_mat(
 //   n_point       : Number of point charge
 //   x, y, z       : Array, size of n_point, point charge coordinates
 //   ldm           : Leading dimension of output matrix, should >= 
-//                   H2ERI_sum_sp_bfp(unc_sp_shells, num_unc_sp, num_sp, sp_idx)
+//                   total number of all shell pairs' basis function pairs
 // Output parameter:
 //   mat : Matrix with unfolded NAI pairs results, size >= ldm * n_point
 void H2ERI_calc_NAI_pairs_to_mat(

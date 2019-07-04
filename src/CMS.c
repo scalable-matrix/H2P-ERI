@@ -11,7 +11,7 @@
 // TOTAL BUG COUNT FOR THIS: 3
 
 // Read all shell information in a .mol file and normalize all these shells
-void CMS_read_mol_file(const char *mol_fname, int *nshell_, shell_t **shells_)
+void CMS_read_mol_file(const char *mol_fname, int *natom_, int *nshell_, shell_t **shells_)
 {
     int AM_map[128];
     AM_map['S'] = 0;
@@ -117,6 +117,7 @@ void CMS_read_mol_file(const char *mol_fname, int *nshell_, shell_t **shells_)
     // 3. Normalize all shells
     simint_normalize_shells(nshell_total, shells);
     
+    *natom_  = natom;
     *nshell_ = nshell_total;
     *shells_ = shells;
 }
@@ -254,22 +255,6 @@ void CMS_destroy_Simint_buff(simint_buff_t buff)
     simint_free_shell(&buff->NAI_shell2);
     simint_free_multi_shellpair(&buff->bra_pair);
     simint_free_multi_shellpair(&buff->ket_pair);
-}
-
-// Sum the number of basis function pairs of a FUSP list
-int H2ERI_sum_sp_bfp(
-    const shell_t *unc_sp_shells, const int num_unc_sp,
-    const int num_sp, const int *sp_idx
-)
-{
-    int nbfp = 0;
-    for (int i = 0; i < num_sp; i++)
-    {
-        int am0 = unc_sp_shells[sp_idx[i]].am;
-        int am1 = unc_sp_shells[sp_idx[i] + num_unc_sp].am;
-        nbfp += NCART(am0) * NCART(am1);
-    }
-    return nbfp;
 }
 
 // Calculate shell quartet pairs (N_i M_i|Q_j P_j) and unfold all ERI 
