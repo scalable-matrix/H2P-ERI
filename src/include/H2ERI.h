@@ -17,7 +17,7 @@
 #include "H2ERI_partition.h"
 
 // H2ERI H2 construction
-#include "H2ERI_build.h"
+#include "H2ERI_build_H2.h"
 
 // H2ERI Coulomb matrix construction
 #include "H2ERI_build_Coulomb.h"

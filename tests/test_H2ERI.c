@@ -22,7 +22,7 @@ int main(int argc, char **argv)
     H2ERI_partition(h2eri);
     
     // 4. Build H2 representation for ERI tensor
-    H2ERI_build(h2eri);
+    H2ERI_build_H2(h2eri);
 
     // 5. Generate a symmetric density matrix and save it to file
     int num_bf = h2eri->num_bf;

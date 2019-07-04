@@ -356,8 +356,8 @@ void H2ERI_generate_normal_distribution(
     {
         do 
         {
-            u1 = ((double) rand () / RAND_MAX) * 2.0 - 1.0;
-            u2 = ((double) rand () / RAND_MAX) * 2.0 - 1.0;
+            u1 = drand48() * 2.0 - 1.0;
+            u2 = drand48() * 2.0 - 1.0;
             w  = u1 * u1 + u2 * u2;
         } while (w >= 1.0 || w <= 1e-15);
         mult = sqrt((-2.0 * log(w)) / w);
@@ -370,8 +370,8 @@ void H2ERI_generate_normal_distribution(
     {
         do 
         {
-            u1 = ((double) rand () / RAND_MAX) * 2.0 - 1.0;
-            u2 = ((double) rand () / RAND_MAX) * 2.0 - 1.0;
+            u1 = drand48() * 2.0 - 1.0;
+            u2 = drand48() * 2.0 - 1.0;
             w  = u1 * u1 + u2 * u2;
         } while (w >= 1.0 || w <= 1e-15);
         mult = sqrt((-2.0 * log(w)) / w);
@@ -471,6 +471,9 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
     H2ERI_calc_ovlp_ff_idx(h2eri);
     H2P_int_vec_t *ovlp_ff_idx = h2eri->ovlp_ff_idx;
     
+    size_t U_timers_msize = sizeof(double) * n_thread * 8;
+    double *U_timers = (double *) H2P_malloc_aligned(U_timers_msize);
+    
     // 3. Hierarchical construction level by level
     for (int i = max_level; i >= min_adm_level; i--)
     {
@@ -478,9 +481,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         int level_i_n_node = level_n_node[i];
         int n_thread_i = MIN(n_thread, level_i_n_node);
         
-        // TODO: U construction performance is extremely bad now, multithreading
-        // performance is even worse. Check the performance issue first.
-        n_thread_i = 1;  
+        memset(U_timers, 0, U_timers_msize);
         
         // A. Compress at the i-th level
         #pragma omp parallel num_threads(n_thread_i)
@@ -501,8 +502,11 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
             H2P_dense_mat_t A_block     = thread_buf->mat2;
             H2P_dense_mat_t QR_buff     = thread_buf->mat0;  
             simint_buff_t   simint_buff = h2eri->simint_buffs[tid];
+            double *timers = U_timers + 8 * tid;
+            double st, et;
             
-            #pragma omp for schedule(dynamic)
+            h2pack->tb[tid]->timer = -H2P_get_wtime_sec();
+            #pragma omp for schedule(dynamic) nowait
             for (int j = 0; j < level_i_n_node; j++)
             {
                 int node = level_i_nodes[j];
@@ -510,6 +514,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 int *child_nodes = children + node * max_child;
                 
                 // (1) Construct row subset for this node
+                st = H2P_get_wtime_sec();
                 if (node_n_child == 0)
                 {
                     int s_index = cluster[2 * node];
@@ -541,6 +546,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 }  // End of "if (node_n_child == 0)"
                 
                 // (2) Generate proxy points
+                //st = H2P_get_wtime_sec();
                 double *node_enbox = enbox + 6 * node;
                 double width  = node_enbox[3];
                 double extent = box_extent[node];
@@ -563,8 +569,11 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                     pp_y[k] += center_y;
                     pp_z[k] += center_z;
                 }
+                //et = H2P_get_wtime_sec();
+                //timers[5] += et - st;
                 
                 // (3) Prepare current node's overlapping far field point list
+                //st = H2P_get_wtime_sec();
                 int n_ff_idx0 = ovlp_ff_idx[node]->length;
                 int *ff_idx0  = ovlp_ff_idx[node]->data;
                 int n_ff_idx  = H2ERI_gather_sum(skel_flag, ovlp_ff_idx[node]);
@@ -580,6 +589,8 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                     }
                 }
                 node_ff_idx->length = n_ff_idx;
+                et = H2P_get_wtime_sec();
+                timers[5] += et - st;
                 
                 // (4) Construct NAI and ERI blocks
                 // A_ff : A_blk_nrow-by-A_ff_ncol
@@ -590,14 +601,20 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 H2P_dense_mat_resize(A_ff_pp, A_blk_nrow, A_ff_ncol + A_pp_ncol);
                 double *A_ff = A_ff_pp->data;
                 double *A_pp = A_ff_pp->data + A_blk_nrow * A_ff_ncol;
+                st = H2P_get_wtime_sec();
                 H2ERI_calc_ERI_pairs_to_mat(
                     unc_sp, pair_idx->length, node_ff_idx->length, pair_idx->data, 
                     node_ff_idx->data, simint_buff, A_ff, A_ff_ncol
                 );
+                et = H2P_get_wtime_sec();
+                timers[0] += et - st;
+                st = H2P_get_wtime_sec();
                 H2ERI_calc_NAI_pairs_to_mat(
                     unc_sp_shells, num_unc_sp, pair_idx->length, pair_idx->data, 
                     num_pp, pp_x, pp_y, pp_z, A_pp, A_blk_nrow
                 );
+                et = H2P_get_wtime_sec();
+                timers[1] += et - st;
                 
                 // (5) Randomized normalization for NAI and ERI blocks
                 // randn_pp: A_pp_ncol-by-A_blk_nrow
@@ -606,11 +623,15 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 int A_blk_ncol = 2 * A_blk_nrow;
                 H2P_dense_mat_resize(randn_mat, 1, randn_size);
                 H2P_dense_mat_resize(A_block, A_blk_nrow, A_blk_ncol);
+                st = H2P_get_wtime_sec();
                 H2ERI_generate_normal_distribution(0.0, 1.0, randn_size, randn_mat->data);
+                et = H2P_get_wtime_sec();
+                timers[2] += et - st;
                 double *randn_pp = randn_mat->data;
                 double *randn_ff = randn_mat->data + A_pp_ncol * A_blk_nrow;
                 double *A_blk_pp = A_block->data;
                 double *A_blk_ff = A_block->data + A_blk_nrow;
+                st = H2P_get_wtime_sec();
                 CBLAS_GEMM(
                     CblasRowMajor, CblasTrans, CblasNoTrans, 
                     A_blk_nrow, A_blk_nrow, A_pp_ncol,
@@ -623,16 +644,26 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                     1.0, A_ff, A_ff_ncol, randn_ff, A_blk_nrow,
                     0.0, A_blk_ff, A_blk_ncol
                 );
-                H2P_dense_mat_normalize_columns(A_block, randn_mat);
+                et = H2P_get_wtime_sec();
+                timers[3] += et - st;
+                
                 
                 // (5) ID compression
+                st = H2P_get_wtime_sec();
+                H2P_dense_mat_normalize_columns(A_block, randn_mat);
                 H2P_dense_mat_select_rows(A_block, row_idx);
                 H2P_dense_mat_resize(QR_buff, 1, 2 * A_block->nrow);
                 H2P_int_vec_set_capacity(ID_buff, 4 * A_block->nrow);
+                et = H2P_get_wtime_sec();
+                timers[5] += et - st;
+                st = H2P_get_wtime_sec();
                 H2P_ID_compress(
                     A_block, QR_REL_NRM, stop_param, &U[node], sub_idx, 
                     1, QR_buff->data, ID_buff->data
                 );
+                et = H2P_get_wtime_sec();
+                timers[4] += et - st;
+                st = H2P_get_wtime_sec();
                 H2P_int_vec_gather(row_idx, sub_idx, sub_row_idx);
                 H2P_int_vec_init(&J_pair[node], pair_idx->length);
                 H2P_int_vec_init(&J_row[node],  sub_row_idx->length);
@@ -641,8 +672,35 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                     work_buf, sub_pair, J_row[node]
                 );
                 H2P_int_vec_gather(pair_idx, sub_pair, J_pair[node]);
+                et = H2P_get_wtime_sec();
+                timers[5] += et - st;
             }  // End of j loop
+            h2pack->tb[tid]->timer += H2P_get_wtime_sec();
         }  // End of "#pragma omp parallel"
+        
+        #ifdef PROFILING_OUTPUT
+        double max_t = 0.0, avg_t = 0.0, min_t = 1145141919.0;
+        for (int i = 0; i < n_thread_i; i++)
+        {
+            double thread_i_timer = h2pack->tb[i]->timer;
+            avg_t += thread_i_timer;
+            max_t = MAX(max_t, thread_i_timer);
+            min_t = MIN(min_t, thread_i_timer);
+        }
+        avg_t /= (double) n_thread_i;
+        printf("[PROFILING] Build U: level %d, %d/%d threads, %d nodes, ", i, n_thread_i, n_thread, level_i_n_node);
+        printf("min/avg/max thread wall-time = %.3lf, %.3lf, %.3lf (s)\n", min_t, avg_t, max_t);
+        printf("[PROFILING] Build U subroutine time consumption:\n");
+        printf("tid, calc ERI, calc NAI, randn mat, DGEMM, ID compress, misc., total\n");
+        for (int tid = 0; tid < n_thread_i; tid++)
+        {
+            double *timers = U_timers + 8 * tid;
+            printf(
+                "%3d, %6.3lf, %6.3lf, %6.3lf, %6.3lf, %6.3lf, %6.3lf, %6.3lf\n",
+                tid, timers[0], timers[1], timers[2], timers[3], timers[4], timers[5], h2pack->tb[tid]->timer
+            );
+        }
+        #endif
         
         // B. Update skeleton points after the compression at the i-th level.
         //    At the (i-1)-th level, only need to consider overlapping FF shell pairs
@@ -662,6 +720,8 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
             H2ERI_mark_flags(skel_flag, n_index, index_seq + s_index);
         }
     }  // End of i loop
+    
+    H2P_free_aligned(U_timers);
     
     // 4. Initialize other not touched U J & add statistic info
     for (int i = 0; i < h2pack->n_UJ; i++)
@@ -1031,7 +1091,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
 }
 
 // Build H2 representation for ERI tensor
-void H2ERI_build(H2ERI_t h2eri)
+void H2ERI_build_H2(H2ERI_t h2eri)
 {
     double st, et;
 
