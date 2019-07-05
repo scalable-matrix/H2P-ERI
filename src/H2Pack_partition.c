@@ -130,7 +130,6 @@ H2P_tree_node_t H2P_bisection_partition_points(
     // 3. Bisection partition points in current box
     int *rel_idx   = (int*) malloc(sizeof(int) * node_npts * dim);
     int *child_idx = (int*) malloc(sizeof(int) * node_npts);
-    //DTYPE *rel_coord = (DTYPE*) malloc(sizeof(DTYPE) * node_npts * dim);
     assert(rel_idx != NULL && child_idx != NULL);
     memset(child_idx, 0, sizeof(int) * node_npts);
     int pow2 = 1;
@@ -140,11 +139,10 @@ H2P_tree_node_t H2P_bisection_partition_points(
         DTYPE enbox_width_j  = enbox[dim + j];
         DTYPE *coord_dim_j_s = coord   + j * n_point + coord_s;
         int   *rel_idx_dim_j = rel_idx + j * node_npts;
-        //DTYPE *rel_coord_dim_j = rel_coord + j * node_npts;
         for (int i = 0; i < node_npts; i++)
         {
             DTYPE rel_coord  = coord_dim_j_s[i] - enbox_corner_j;
-            rel_idx_dim_j[i] = DFLOOR(1.9999999999 * rel_coord / enbox_width_j);
+            rel_idx_dim_j[i] = DFLOOR(2.0 * rel_coord / enbox_width_j);
             if (rel_idx_dim_j[i] == 2) rel_idx_dim_j[i] = 1;
             child_idx[i] += rel_idx_dim_j[i] * pow2;
         }
@@ -244,7 +242,6 @@ H2P_tree_node_t H2P_bisection_partition_points(
     free(sub_displs);
     free(sub_node_npts);
     free(sub_rel_idx);
-    //free(rel_coord);
     free(child_idx);
     free(rel_idx);
     if (alloc_enbox) free(enbox);
@@ -524,11 +521,10 @@ void H2P_partition_points(
     h2pack->parent[h2pack->root_idx] = -1;  // Root node doesn't have parent
     H2P_tree_node_destroy(root);  // We don't need the linked list H2 tree anymore
     
-    // For H2ERI: h2pack->krnl_dim = 1, h2pack->mat_cluster = h2pack->cluster
-    // manually set h2pack->krnl_mat_size.
     h2pack->krnl_dim = 1;
-    for (int i = 0; i < n_node * 2; i++)
-        h2pack->mat_cluster[i] = h2pack->krnl_dim * h2pack->mat_cluster[i];
+    // For H2ERI: manually set h2pack->mat_cluster and h2pack->krnl_mat_size outside
+    //for (int i = 0; i < n_node * 2; i++)
+    //    h2pack->mat_cluster[i] = h2pack->krnl_dim * h2pack->cluster[i];
     //h2pack->krnl_mat_size = h2pack->krnl_dim * h2pack->n_point;
     
     // 4. Calculate reduced (in)admissible pairs

@@ -657,9 +657,9 @@ void H2P_build_B(H2Pack_t h2pack)
         #pragma omp for schedule(dynamic) nowait
         for (int i_blk = 0; i_blk < n_B_blk; i_blk++)
         {
-            int blk_s_index = B_blk->data[i_blk];
-            int blk_e_index = B_blk->data[i_blk + 1];
-            for (int i = blk_s_index; i < blk_e_index; i++)
+            int B_blk_s = B_blk->data[i_blk];
+            int B_blk_e = B_blk->data[i_blk + 1];
+            for (int i = B_blk_s; i < B_blk_e; i++)
             {
                 int node0  = r_adm_pairs[2 * i];
                 int node1  = r_adm_pairs[2 * i + 1];
@@ -816,9 +816,9 @@ void H2P_build_D(H2Pack_t h2pack)
         #pragma omp for schedule(dynamic) nowait
         for (int i_blk0 = 0; i_blk0 < n_D0_blk; i_blk0++)
         {
-            int blk_s_index = D_blk0->data[i_blk0];
-            int blk_e_index = D_blk0->data[i_blk0 + 1];
-            for (int i = blk_s_index; i < blk_e_index; i++)
+            int D_blk0_s = D_blk0->data[i_blk0];
+            int D_blk0_e = D_blk0->data[i_blk0 + 1];
+            for (int i = D_blk0_s; i < D_blk0_e; i++)
             {
                 int node = leaf_nodes[i];
                 int s_index = cluster[2 * node];
@@ -837,9 +837,9 @@ void H2P_build_D(H2Pack_t h2pack)
         #pragma omp for schedule(dynamic) nowait
         for (int i_blk1 = 0; i_blk1 < n_D1_blk; i_blk1++)
         {
-            int blk_s_index = D_blk1->data[i_blk1];
-            int blk_e_index = D_blk1->data[i_blk1 + 1];
-            for (int i = blk_s_index; i < blk_e_index; i++)
+            int D_blk1_s = D_blk1->data[i_blk1];
+            int D_blk1_e = D_blk1->data[i_blk1 + 1];
+            for (int i = D_blk1_s; i < D_blk1_e; i++)
             {
                 int node0 = r_inadm_pairs[2 * i];
                 int node1 = r_inadm_pairs[2 * i + 1];
