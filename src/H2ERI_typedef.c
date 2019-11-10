@@ -40,7 +40,7 @@ void H2ERI_init(H2ERI_t *h2eri_, const double scr_tol, const double ext_tol, con
     h2eri->simint_buffs     = NULL;
     
     double _QR_tol = QR_tol;
-    H2P_init(&h2eri->h2pack, 3, QR_REL_NRM, &_QR_tol);
+    H2P_init(&h2eri->h2pack, 3, 1, QR_REL_NRM, &_QR_tol);
     
     *h2eri_ = h2eri;
 }

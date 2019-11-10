@@ -126,7 +126,6 @@ void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri)
     int    max_level      = h2pack->max_level;  // level = [0, max_level], total max_level+1 levels
     int    max_child      = h2pack->max_child;
     int    n_leaf_node    = h2pack->n_leaf_node;
-    int    *cluster       = h2pack->cluster;
     int    *children      = h2pack->children;
     int    *n_child       = h2pack->n_child;
     int    *level_nodes   = h2pack->level_nodes;
@@ -418,7 +417,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
     int    *level_n_node  = h2pack->level_n_node;
     int    *node_level    = h2pack->node_level;
     int    *leaf_nodes    = h2pack->height_nodes;
-    int    *cluster       = h2pack->cluster;
+    int    *pt_cluster    = h2pack->pt_cluster;
     int    *unc_sp_nbfp   = h2eri->unc_sp_nbfp;
     int    *index_seq     = h2eri->index_seq;
     double *enbox         = h2pack->enbox;
@@ -518,11 +517,11 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 st = H2P_get_wtime_sec();
                 if (node_n_child == 0)
                 {
-                    int s_index = cluster[2 * node];
-                    int e_index = cluster[2 * node + 1];
-                    int node_npts = e_index - s_index + 1;
+                    int pt_s = pt_cluster[2 * node];
+                    int pt_e = pt_cluster[2 * node + 1];
+                    int node_npts = pt_e - pt_s + 1;
                     H2P_int_vec_set_capacity(pair_idx, node_npts);
-                    memcpy(pair_idx->data, index_seq + s_index, sizeof(int) * node_npts);
+                    memcpy(pair_idx->data, index_seq + pt_s, sizeof(int) * node_npts);
                     pair_idx->length = node_npts;
                     
                     int nbfp = H2ERI_gather_sum(unc_sp_nbfp, pair_idx);
@@ -660,7 +659,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 st = H2P_get_wtime_sec();
                 H2P_ID_compress(
                     A_block, QR_REL_NRM, stop_param, &U[node], sub_idx, 
-                    1, QR_buff->data, ID_buff->data
+                    1, QR_buff->data, ID_buff->data, 1
                 );
                 et = H2P_get_wtime_sec();
                 timers[4] += et - st;
@@ -717,9 +716,9 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         for (int j = 0; j < lvl_n_leaf[i]; j++)
         {
             int leaf_j = lvl_leaf[i * n_leaf_node + j];
-            int s_index = cluster[2 * leaf_j];
-            int e_index = cluster[2 * leaf_j + 1];
-            for (int k = s_index; k <= e_index; k++) skel_flag[k] = 1;
+            int pt_s = pt_cluster[2 * leaf_j];
+            int pt_e = pt_cluster[2 * leaf_j + 1];
+            for (int k = pt_s; k <= pt_e; k++) skel_flag[k] = 1;
         }
     }  // End of i loop
     
@@ -761,7 +760,7 @@ void H2ERI_build_B(H2ERI_t h2eri)
     int n_r_adm_pair      = h2pack->n_r_adm_pair;
     int *r_adm_pairs      = h2pack->r_adm_pairs;
     int *node_level       = h2pack->node_level;
-    int *cluster          = h2pack->cluster;
+    int *pt_cluster       = h2pack->pt_cluster;
     int *unc_sp_nbfp      = h2eri->unc_sp_nbfp;
     int *unc_sp_bfp_sidx  = h2eri->unc_sp_bfp_sidx;
     int *index_seq        = h2eri->index_seq;
@@ -804,16 +803,16 @@ void H2ERI_build_B(H2ERI_t h2eri)
         }
         if (level0 > level1)
         {
-            int s_index1 = cluster[2 * node1];
-            int e_index1 = cluster[2 * node1 + 1];
+            int pt_s1 = pt_cluster[2 * node1];
+            int pt_e1 = pt_cluster[2 * node1 + 1];
             B_nrow[i] = J_row[node0]->length;
-            B_ncol[i] = unc_sp_bfp_sidx[e_index1 + 1] - unc_sp_bfp_sidx[s_index1];
+            B_ncol[i] = unc_sp_bfp_sidx[pt_e1 + 1] - unc_sp_bfp_sidx[pt_s1];
         }
         if (level0 < level1)
         {
-            int s_index0 = cluster[2 * node0];
-            int e_index0 = cluster[2 * node0 + 1];
-            B_nrow[i] = unc_sp_bfp_sidx[e_index0 + 1] - unc_sp_bfp_sidx[s_index0];
+            int pt_s0 = pt_cluster[2 * node0];
+            int pt_e0 = pt_cluster[2 * node0 + 1];
+            B_nrow[i] = unc_sp_bfp_sidx[pt_e0 + 1] - unc_sp_bfp_sidx[pt_s0];
             B_ncol[i] = J_row[node1]->length;
         }
         size_t Bi_size = (size_t) B_nrow[i] * (size_t) B_ncol[i];
@@ -824,7 +823,8 @@ void H2ERI_build_B(H2ERI_t h2eri)
         h2pack->mat_size[4] += 2 * (B_nrow[i] * B_ncol[i]);
         h2pack->mat_size[4] += 2 * (B_nrow[i] + B_ncol[i]);
     }
-    H2P_partition_workload(n_r_adm_pair, B_ptr + 1, B_total_size, n_thread * BD_NTASK_THREAD, B_blk);
+    int BD_ntask_thread = (h2pack->BD_JIT == 1) ? BD_NTASK_THREAD : 1;
+    H2P_partition_workload(n_r_adm_pair, B_ptr + 1, B_total_size, n_thread * BD_ntask_thread, B_blk);
     for (int i = 1; i <= n_r_adm_pair; i++) B_ptr[i] += B_ptr[i - 1];
     h2pack->mat_size[1] = B_total_size;
     
@@ -876,12 +876,12 @@ void H2ERI_build_B(H2ERI_t h2eri)
                 {
                     int tmpB_nrow  = H2ERI_gather_sum(unc_sp_nbfp, J_pair[node0]);
                     int tmpB_ncol  = B_ncol[i];
-                    int s_index1   = cluster[2 * node1];
-                    int e_index1   = cluster[2 * node1 + 1];
+                    int pt_s1      = pt_cluster[2 * node1];
+                    int pt_e1      = pt_cluster[2 * node1 + 1];
                     int n_bra_pair = J_pair[node0]->length;
-                    int n_ket_pair = e_index1 - s_index1 + 1;
+                    int n_ket_pair = pt_e1 - pt_s1 + 1;
                     int *bra_idx   = J_pair[node0]->data;
-                    int *ket_idx   = index_seq + s_index1;
+                    int *ket_idx   = index_seq + pt_s1;
                     H2P_dense_mat_resize(tmpB, tmpB_nrow, tmpB_ncol);
                     H2ERI_calc_ERI_pairs_to_mat(
                         unc_sp, n_bra_pair, n_ket_pair, 
@@ -896,11 +896,11 @@ void H2ERI_build_B(H2ERI_t h2eri)
                 {
                     int tmpB_nrow  = B_nrow[i];
                     int tmpB_ncol  = H2ERI_gather_sum(unc_sp_nbfp, J_pair[node1]);
-                    int s_index0   = cluster[2 * node0];
-                    int e_index0   = cluster[2 * node0 + 1];
-                    int n_bra_pair = e_index0 - s_index0 + 1;
+                    int pt_s0      = pt_cluster[2 * node0];
+                    int pt_e0      = pt_cluster[2 * node0 + 1];
+                    int n_bra_pair = pt_e0 - pt_s0 + 1;
                     int n_ket_pair = J_pair[node1]->length;
-                    int *bra_idx   = index_seq + s_index0;
+                    int *bra_idx   = index_seq + pt_s0;
                     int *ket_idx   = J_pair[node1]->data;
                     H2P_dense_mat_resize(tmpB, tmpB_nrow, tmpB_ncol);
                     H2ERI_calc_ERI_pairs_to_mat(
@@ -944,7 +944,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
     int n_r_inadm_pair   = h2pack->n_r_inadm_pair;
     int num_unc_sp       = h2eri->num_unc_sp;
     int *leaf_nodes      = h2pack->height_nodes;
-    int *cluster         = h2pack->cluster;
+    int *pt_cluster      = h2pack->pt_cluster;
     int *r_inadm_pairs   = h2pack->r_inadm_pairs;
     int *unc_sp_bfp_sidx = h2eri->unc_sp_bfp_sidx;
     int *index_seq       = h2eri->index_seq;
@@ -969,9 +969,9 @@ void H2ERI_build_D(H2ERI_t h2eri)
     for (int i = 0; i < n_leaf_node; i++)
     {
         int node = leaf_nodes[i];
-        int s_index = cluster[2 * node];
-        int e_index = cluster[2 * node + 1];
-        int node_nbfp = unc_sp_bfp_sidx[e_index + 1] - unc_sp_bfp_sidx[s_index];
+        int pt_s = pt_cluster[2 * node];
+        int pt_e = pt_cluster[2 * node + 1];
+        int node_nbfp = unc_sp_bfp_sidx[pt_e + 1] - unc_sp_bfp_sidx[pt_s];
         size_t Di_size = (size_t) node_nbfp * (size_t) node_nbfp;
         D_nrow[i] = node_nbfp;
         D_ncol[i] = node_nbfp;
@@ -982,18 +982,19 @@ void H2ERI_build_D(H2ERI_t h2eri)
         h2pack->mat_size[6] += node_nbfp * node_nbfp;
         h2pack->mat_size[6] += node_nbfp + node_nbfp;
     }
-    H2P_partition_workload(n_leaf_node, D_ptr + 1, D0_total_size, n_thread * BD_NTASK_THREAD, D_blk0);
+    int BD_ntask_thread = (h2pack->BD_JIT == 1) ? BD_NTASK_THREAD : 1;
+    H2P_partition_workload(n_leaf_node, D_ptr + 1, D0_total_size, n_thread * BD_ntask_thread, D_blk0);
     size_t D1_total_size = 0;
     for (int i = 0; i < n_r_inadm_pair; i++)
     {
         int node0 = r_inadm_pairs[2 * i];
         int node1 = r_inadm_pairs[2 * i + 1];
-        int s_index0 = cluster[2 * node0];
-        int s_index1 = cluster[2 * node1];
-        int e_index0 = cluster[2 * node0 + 1];
-        int e_index1 = cluster[2 * node1 + 1];
-        int node0_nbfp = unc_sp_bfp_sidx[e_index0 + 1] - unc_sp_bfp_sidx[s_index0];
-        int node1_nbfp = unc_sp_bfp_sidx[e_index1 + 1] - unc_sp_bfp_sidx[s_index1];
+        int pt_s0 = pt_cluster[2 * node0];
+        int pt_s1 = pt_cluster[2 * node1];
+        int pt_e0 = pt_cluster[2 * node0 + 1];
+        int pt_e1 = pt_cluster[2 * node1 + 1];
+        int node0_nbfp = unc_sp_bfp_sidx[pt_e0 + 1] - unc_sp_bfp_sidx[pt_s0];
+        int node1_nbfp = unc_sp_bfp_sidx[pt_e1 + 1] - unc_sp_bfp_sidx[pt_s1];
         size_t Di_size = (size_t) node0_nbfp * (size_t) node1_nbfp;
         D_nrow[i + n_leaf_node] = node0_nbfp;
         D_ncol[i + n_leaf_node] = node1_nbfp;
@@ -1004,7 +1005,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
         h2pack->mat_size[6] += 2 * (node0_nbfp * node1_nbfp);
         h2pack->mat_size[6] += 2 * (node0_nbfp + node1_nbfp);
     }
-    H2P_partition_workload(n_r_inadm_pair, D_ptr + n_leaf_node + 1, D1_total_size, n_thread * BD_NTASK_THREAD, D_blk1);
+    H2P_partition_workload(n_r_inadm_pair, D_ptr + n_leaf_node + 1, D1_total_size, n_thread * BD_ntask_thread, D_blk1);
     for (int i = 1; i <= n_leaf_node + n_r_inadm_pair; i++) D_ptr[i] += D_ptr[i - 1];
     h2pack->mat_size[2] = D0_total_size + D1_total_size;
     
@@ -1029,12 +1030,12 @@ void H2ERI_build_D(H2ERI_t h2eri)
             for (int i = blk_s_index; i < blk_e_index; i++)
             {
                 int node = leaf_nodes[i];
-                int s_index = cluster[2 * node];
-                int e_index = cluster[2 * node + 1];
-                int node_npts = e_index - s_index + 1;
+                int pt_s = pt_cluster[2 * node];
+                int pt_e = pt_cluster[2 * node + 1];
+                int node_npts = pt_e - pt_s + 1;
                 int ld_Di = D_ncol[i];
                 double *Di = D_data + D_ptr[i];
-                int *bra_idx = index_seq + s_index;
+                int *bra_idx = index_seq + pt_s;
                 int *ket_idx = bra_idx;
                 H2ERI_calc_ERI_pairs_to_mat(
                     unc_sp, node_npts, node_npts, 
@@ -1047,22 +1048,22 @@ void H2ERI_build_D(H2ERI_t h2eri)
         #pragma omp for schedule(dynamic) nowait
         for (int i_blk1 = 0; i_blk1 < n_D1_blk; i_blk1++)
         {
-            int s_index = D_blk1->data[i_blk1];
-            int e_index = D_blk1->data[i_blk1 + 1];
-            for (int i = s_index; i < e_index; i++)
+            int pt_s = D_blk1->data[i_blk1];
+            int pt_e = D_blk1->data[i_blk1 + 1];
+            for (int i = pt_s; i < pt_e; i++)
             {
                 int node0 = r_inadm_pairs[2 * i];
                 int node1 = r_inadm_pairs[2 * i + 1];
-                int s_index0 = cluster[2 * node0];
-                int s_index1 = cluster[2 * node1];
-                int e_index0 = cluster[2 * node0 + 1];
-                int e_index1 = cluster[2 * node1 + 1];
-                int node0_npts = e_index0 - s_index0 + 1;
-                int node1_npts = e_index1 - s_index1 + 1;
+                int pt_s0 = pt_cluster[2 * node0];
+                int pt_s1 = pt_cluster[2 * node1];
+                int pt_e0 = pt_cluster[2 * node0 + 1];
+                int pt_e1 = pt_cluster[2 * node1 + 1];
+                int node0_npts = pt_e0 - pt_s0 + 1;
+                int node1_npts = pt_e1 - pt_s1 + 1;
                 int ld_Di = D_ncol[i + n_leaf_node];
                 double *Di = D_data + D_ptr[i + n_leaf_node];
-                int *bra_idx = index_seq + s_index0;
-                int *ket_idx = index_seq + s_index1;
+                int *bra_idx = index_seq + pt_s0;
+                int *ket_idx = index_seq + pt_s1;
                 H2ERI_calc_ERI_pairs_to_mat(
                     unc_sp, node0_npts, node1_npts, 
                     bra_idx, ket_idx, buff, Di, ld_Di

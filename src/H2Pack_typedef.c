@@ -10,17 +10,23 @@
 #include "H2Pack_aux_structs.h"
 
 // Initialize a H2Pack structure
-void H2P_init(H2Pack_t *h2pack_, const int dim, const int QR_stop_type, void *QR_stop_param)
+void H2P_init(
+    H2Pack_t *h2pack_, const int pt_dim, const int krnl_dim, 
+    const int QR_stop_type, void *QR_stop_param
+)
 {
     H2Pack_t h2pack = (H2Pack_t) malloc(sizeof(struct H2Pack));
     assert(h2pack != NULL);
     
     h2pack->n_thread  = omp_get_max_threads();
-    h2pack->dim       = dim;
-    h2pack->max_child = 1 << dim;
+    h2pack->pt_dim    = pt_dim;
+    h2pack->krnl_dim  = krnl_dim;
+    h2pack->max_child = 1 << pt_dim;
     h2pack->n_matvec  = 0;
-    memset(h2pack->timers,   0, sizeof(double) * 9);
-    memset(h2pack->mat_size, 0, sizeof(size_t) * 8);
+    h2pack->is_H2ERI  = 0;
+    memset(h2pack->mat_size,  0, sizeof(size_t) * 8);
+    memset(h2pack->timers,    0, sizeof(double) * 9);
+    memset(h2pack->JIT_flops, 0, sizeof(double) * 2);
     
     h2pack->QR_stop_type = QR_stop_type;
     if (QR_stop_type == QR_RANK) 
@@ -30,7 +36,7 @@ void H2P_init(H2Pack_t *h2pack_, const int dim, const int QR_stop_type, void *QR
     
     h2pack->parent        = NULL;
     h2pack->children      = NULL;
-    h2pack->cluster       = NULL;
+    h2pack->pt_cluster    = NULL;
     h2pack->mat_cluster   = NULL;
     h2pack->n_child       = NULL;
     h2pack->node_level    = NULL;
@@ -53,6 +59,8 @@ void H2P_init(H2Pack_t *h2pack_, const int dim, const int QR_stop_type, void *QR
     h2pack->enbox         = NULL;
     h2pack->B_data        = NULL;
     h2pack->D_data        = NULL;
+    h2pack->xT            = NULL;
+    h2pack->yT            = NULL;
     h2pack->J             = NULL;
     h2pack->J_coord       = NULL;
     h2pack->pp            = NULL;
@@ -73,7 +81,7 @@ void H2P_destroy(H2Pack_t h2pack)
 {
     free(h2pack->parent);
     free(h2pack->children);
-    free(h2pack->cluster);
+    free(h2pack->pt_cluster);
     free(h2pack->mat_cluster);
     free(h2pack->n_child);
     free(h2pack->node_level);
@@ -96,6 +104,8 @@ void H2P_destroy(H2Pack_t h2pack)
     free(h2pack->enbox);
     H2P_free_aligned(h2pack->B_data);
     H2P_free_aligned(h2pack->D_data);
+    free(h2pack->xT);
+    free(h2pack->yT);
     
     H2P_int_vec_destroy(h2pack->B_blk);
     H2P_int_vec_destroy(h2pack->D_blk0);
@@ -182,11 +192,27 @@ void H2P_print_statistic(H2Pack_t h2pack)
     }
     y0y1_MB /= 1048576.0;
     tb_MB   /= 1048576.0;
-    printf("  * Just-In-Time B & D build  : %s\n", h2pack->BD_JIT ? "Yes" : "No");
+    printf("  * Just-In-Time B & D build  : %s\n", h2pack->BD_JIT ? "Yes (B & D not allocated)" : "No");
     printf("  * H2 representation U, B, D : %.2lf, %.2lf, %.2lf (MB) \n", U_MB, B_MB, D_MB);
     printf("  * Matvec auxiliary arrays   : %.2lf (MB) \n", y0y1_MB);
     printf("  * Thread-local buffers      : %.2lf (MB) \n", tb_MB);
-    printf("  * sizeof(U + B + D) / kms   : %.3lf \n", UBD_k);
+    //printf("  * sizeof(U + B + D) / kms   : %.3lf \n", UBD_k);
+    if (h2pack->is_H2ERI == 0)
+    {
+        int max_node_rank = 0;
+        double sum_node_rank = 0.0, non_empty_node = 0.0;
+        for (int i = 0; i < h2pack->n_UJ; i++)
+        {
+            int rank_i = h2pack->J[i]->length;
+            if (rank_i > 0)
+            {
+                sum_node_rank  += (double) rank_i;
+                non_empty_node += 1.0;
+                max_node_rank   = (rank_i > max_node_rank) ? rank_i : max_node_rank;
+            }
+        }
+        printf("  * Max / Avg compressed rank : %d, %.0lf \n", max_node_rank, sum_node_rank / non_empty_node);
+    }
     
     printf("==================== H2Pack timing info =====================\n");
     int n_matvec = h2pack->n_matvec;
@@ -211,18 +237,36 @@ void H2P_print_statistic(H2Pack_t h2pack)
         "      |----> Upward sweep        = %.3lf, %.2lf GB/s\n", 
         h2pack->timers[4], uw_MB  / h2pack->timers[4] / 1024.0
     );
-    printf(
-        "      |----> Intermediate sweep  = %.3lf, %.2lf GB/s\n", 
-        h2pack->timers[5], mid_MB / h2pack->timers[5] / 1024.0
-    );
+    if (h2pack->BD_JIT == 0)
+    {
+        printf(
+            "      |----> Intermediate sweep  = %.3lf, %.2lf GB/s\n", 
+            h2pack->timers[5], mid_MB / h2pack->timers[5] / 1024.0
+        );
+    } else {
+        double GFLOPS = h2pack->JIT_flops[0] / 1000000000.0;
+        printf(
+            "      |----> Intermediate sweep  = %.3lf, %.2lf GFLOPS\n", 
+            h2pack->timers[5], GFLOPS / h2pack->timers[5]
+        );
+    }
     printf(
         "      |----> Downward sweep      = %.3lf, %.2lf GB/s\n", 
         h2pack->timers[6], dw_MB  / h2pack->timers[6] / 1024.0
     );
-    printf(
-        "      |----> Dense block sweep   = %.3lf, %.2lf GB/s\n", 
-        h2pack->timers[7], db_MB  / h2pack->timers[7] / 1024.0
-    );
+    if (h2pack->BD_JIT == 0)
+    {
+        printf(
+            "      |----> Dense block sweep   = %.3lf, %.2lf GB/s\n", 
+            h2pack->timers[7], db_MB  / h2pack->timers[7] / 1024.0
+        );
+    } else {
+        double GFLOPS = h2pack->JIT_flops[1] / 1000000000.0;
+        printf(
+            "      |----> Dense block sweep   = %.3lf, %.2lf GFLOPS\n", 
+            h2pack->timers[7], GFLOPS / h2pack->timers[7]
+        );
+    }
     printf(
         "      |----> OpenMP reduction    = %.3lf, %.2lf GB/s\n", 
         h2pack->timers[8], rd_MB  / h2pack->timers[8] / 1024.0

@@ -39,6 +39,7 @@ void H2ERI_partition_unc_sp_centers(H2ERI_t h2eri, int max_leaf_points, double m
         num_unc_sp_bfp += NCART(am0) * NCART(am1);
     }
     h2eri->h2pack->krnl_mat_size = num_unc_sp_bfp; 
+    h2eri->h2pack->is_H2ERI = 1;  // Tell H2Pack not to set krnl_mat_size and mat_cluster
     H2P_partition_points(
         h2eri->h2pack, num_unc_sp, unc_sp_center, 
         max_leaf_points, max_leaf_size
@@ -153,7 +154,7 @@ void H2ERI_calc_box_extent(H2ERI_t h2eri)
     int    max_level      = h2pack->max_level;
     int    max_child      = h2pack->max_child;
     int    n_leaf_node    = h2pack->n_leaf_node;
-    int    *cluster       = h2pack->cluster;
+    int    *pt_cluster    = h2pack->pt_cluster;
     int    *children      = h2pack->children;
     int    *n_child       = h2pack->n_child;
     int    *level_nodes   = h2pack->level_nodes;
@@ -183,15 +184,15 @@ void H2ERI_calc_box_extent(H2ERI_t h2eri)
             int n_child_node = n_child[node];
             if (n_child_node == 0)
             {
-                int s_index = cluster[2 * node];
-                int e_index = cluster[2 * node + 1];
-                int n_point = e_index - s_index + 1;
+                int pt_s = pt_cluster[2 * node];
+                int pt_e = pt_cluster[2 * node + 1];
+                int n_point = pt_e - pt_s + 1;
                 double box_extent_node = 0.0;
                 for (int d = 0; d < 3; d++)
                 {
                     double *center_d = unc_sp_center + d * num_unc_sp;
                     double enbox_width_d = node_enbox[3 + d];
-                    for (int k = s_index; k <= e_index; k++)
+                    for (int k = pt_s; k <= pt_e; k++)
                     {
                         double tmp_extent_d_k;
                         // Distance of shell pair center to the upper limit along each dimension
@@ -232,12 +233,12 @@ void H2ERI_calc_box_extent(H2ERI_t h2eri)
 //   h2eri->h2pack->mat_cluster : Array, size h2pack->n_node * 2, matvec cluster for H2 nodes
 void H2ERI_calc_mat_cluster(H2ERI_t h2eri)
 {
-    H2Pack_t h2pack = h2eri->h2pack;
-    int n_node    = h2pack->n_node;
-    int max_child = h2pack->max_child;
-    int *cluster  = h2pack->cluster;
-    int *children = h2pack->children;
-    int *n_child  = h2pack->n_child;
+    H2Pack_t h2pack  = h2eri->h2pack;
+    int n_node       = h2pack->n_node;
+    int max_child    = h2pack->max_child;
+    int *pt_cluster  = h2pack->pt_cluster;
+    int *children    = h2pack->children;
+    int *n_child     = h2pack->n_child;
     int *mat_cluster = h2pack->mat_cluster;
     int *unc_sp_bfp_sidx = h2eri->unc_sp_bfp_sidx;
     
@@ -249,9 +250,9 @@ void H2ERI_calc_mat_cluster(H2ERI_t h2eri)
         int n_child_i = n_child[i];
         if (n_child_i == 0)
         {
-            int s_index = cluster[2 * i];
-            int e_index = cluster[2 * i + 1];
-            int node_nbf = unc_sp_bfp_sidx[e_index + 1] - unc_sp_bfp_sidx[s_index];
+            int pt_s = pt_cluster[2 * i];
+            int pt_e = pt_cluster[2 * i + 1];
+            int node_nbf = unc_sp_bfp_sidx[pt_e + 1] - unc_sp_bfp_sidx[pt_s];
             mat_cluster[i20] = offset;
             mat_cluster[i21] = offset + node_nbf - 1;
             offset += node_nbf;
