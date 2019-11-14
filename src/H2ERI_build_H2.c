@@ -722,8 +722,6 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         }
     }  // End of i loop
     
-    H2P_free_aligned(U_timers);
-    
     // 4. Initialize other not touched U J & add statistic info
     for (int i = 0; i < h2pack->n_UJ; i++)
     {
@@ -744,6 +742,13 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         if (J_pair[i] == NULL) H2P_int_vec_init(&J_pair[i], 1);
         //printf("%4d, %4d\n", U[i]->nrow, U[i]->ncol);
     }
+
+    free(skel_flag);
+    free(lvl_leaf);
+    free(lvl_n_leaf);
+    H2P_free_aligned(U_timers);
+    for (int i = 0; i < n_thread; i++)
+        H2P_thread_buf_reset(h2pack->tb[i]);
 }
 
 // Build H2 generator matrices
