@@ -28,7 +28,7 @@ void H2ERI_partition_unc_sp_centers(H2ERI_t h2eri, int max_leaf_points, double m
     int num_unc_sp = h2eri->num_unc_sp;
     double *unc_sp_center = h2eri->unc_sp_center;
     if (max_leaf_points <= 0)   max_leaf_points = 300;
-    if (max_leaf_size   <= 0.0) max_leaf_size   = 2.0;
+    if (max_leaf_size   <= 0.0) max_leaf_size   = 1.0;
     // Manually set the kernel matrix size for h2eri->h2pack->tb allocation.
     shell_t *unc_sp_shells = h2eri->unc_sp_shells;
     int num_unc_sp_bfp = 0;
@@ -64,8 +64,8 @@ void H2ERI_partition_unc_sp_centers(H2ERI_t h2eri, int max_leaf_points, double m
         unc_sp_extent_new[i] = unc_sp_extent[cidx_i];
         simint_initialize_shell(&unc_sp_shells_new[i20]);
         simint_initialize_shell(&unc_sp_shells_new[i21]);
-        simint_allocate_shell(1, &unc_sp_shells_new[i20]);
-        simint_allocate_shell(1, &unc_sp_shells_new[i21]);
+        simint_allocate_shell(unc_sp_shells[cidx_i20].nprim, &unc_sp_shells_new[i20]);
+        simint_allocate_shell(unc_sp_shells[cidx_i21].nprim, &unc_sp_shells_new[i21]);
         simint_copy_shell(&unc_sp_shells[cidx_i20], &unc_sp_shells_new[i20]);
         simint_copy_shell(&unc_sp_shells[cidx_i21], &unc_sp_shells_new[i21]);
         unc_sp_shell_idx_new[i20] = unc_sp_shell_idx[cidx_i20];

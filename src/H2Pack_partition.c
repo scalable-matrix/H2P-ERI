@@ -142,7 +142,7 @@ H2P_tree_node_t H2P_bisection_partition_points(
         for (int i = 0; i < node_npts; i++)
         {
             DTYPE rel_coord  = coord_dim_j_s[i] - enbox_corner_j;
-            rel_idx_dim_j[i] = DFLOOR(2.0 * rel_coord / enbox_width_j);
+            rel_idx_dim_j[i] = DFLOOR(1.9999999999 * rel_coord / enbox_width_j);
             if (rel_idx_dim_j[i] == 2) rel_idx_dim_j[i] = 1;
             child_idx[i] += rel_idx_dim_j[i] * pow2;
         }
