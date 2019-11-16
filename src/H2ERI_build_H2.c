@@ -464,7 +464,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         for (int j = level_i + 1; j <= max_level; j++)
         {
             int idx = lvl_n_leaf[j];
-            lvl_leaf[level_i * n_leaf_node + idx] = leaf_i;
+            lvl_leaf[j * n_leaf_node + idx] = leaf_i;
             lvl_n_leaf[j]++;
         }
     }
