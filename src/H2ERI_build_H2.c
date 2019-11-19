@@ -110,9 +110,9 @@ void H2ERI_generate_proxy_point_layers(
 //   2. Their extents overlap with i-th node's near field boxes (super cell).
 // Input parameters:
 //   h2eri->h2pack        : H2 tree partitioning info
-//   h2eri->num_unc_sp    : Number of fully uncontracted shell pairs (FUSP)
-//   h2eri->unc_sp_center : Array, size 3 * num_unc_sp, centers of FUSP, sorted
-//   h2eri->unc_sp_extent : Array, size num_unc_sp, extents of FUSP, sorted
+//   h2eri->num_sp    : Number of fully uncontracted shell pairs (FUSP)
+//   h2eri->sp_center : Array, size 3 * num_sp, centers of FUSP, sorted
+//   h2eri->sp_extent : Array, size num_sp, extents of FUSP, sorted
 // Output parameters:
 //   h2eri->ovlp_ff_idx : Array, size h2pack->n_node, i-th vector contains
 //                        FUSP indices that satisfy the requirements.
@@ -121,7 +121,7 @@ void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri)
     H2Pack_t h2pack = h2eri->h2pack;
     int    n_node         = h2pack->n_node;
     int    root_idx       = h2pack->root_idx;
-    int    n_point        = h2pack->n_point;    // == h2eri->num_unc_sp
+    int    n_point        = h2pack->n_point;    // == h2eri->num_sp
     int    min_adm_level  = h2pack->min_adm_level; 
     int    max_level      = h2pack->max_level;  // level = [0, max_level], total max_level+1 levels
     int    max_child      = h2pack->max_child;
@@ -131,8 +131,8 @@ void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri)
     int    *level_nodes   = h2pack->level_nodes;
     int    *level_n_node  = h2pack->level_n_node;
     double *enbox         = h2pack->enbox;
-    double *center   = h2eri->unc_sp_center;
-    double *extent   = h2eri->unc_sp_extent;
+    double *center   = h2eri->sp_center;
+    double *extent   = h2eri->sp_extent;
     double *center_x = center;
     double *center_y = center + n_point;
     double *center_z = center + n_point * 2;
@@ -266,7 +266,7 @@ void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri)
 // Extract shell pair and row indices of a target row index set from
 // a given set of FISP
 // Input parameters:
-//   unc_sp   : Array, size num_unc_sp, FUSP
+//   sp   : Array, size num_sp, FUSP
 //   row_idx  : Vector, target row indices set
 //   sp_idx   : Vector, given FUSP set 
 //   work_buf : Vector, work buffer
@@ -274,13 +274,13 @@ void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri)
 //   pair_idx    : Vector, FUSP indices that contains target row indices set
 //   row_idx_new : Vector, target row new indices in pair_idx FUSP
 void H2ERI_extract_shell_pair_idx(
-    const multi_sp_t *unc_sp, H2P_int_vec_t row_idx,
+    const multi_sp_t *sp, H2P_int_vec_t row_idx,
     H2P_int_vec_t sp_idx,   H2P_int_vec_t work_buf,
     H2P_int_vec_t pair_idx, H2P_int_vec_t row_idx_new
 )
 {
     int num_target = row_idx->length;
-    int num_sp = sp_idx->length;
+    int num_sp     = sp_idx->length;
     
     H2P_int_vec_set_capacity(work_buf, num_sp * 5 + num_target + 2);
     int *nbf1    = work_buf->data;
@@ -293,7 +293,7 @@ void H2ERI_extract_shell_pair_idx(
     off12[0] = 0;
     for (int i = 0; i < num_sp; i++)
     {
-        const multi_sp_t *sp_i = unc_sp + sp_idx->data[i];
+        const multi_sp_t *sp_i = sp + sp_idx->data[i];
         nbf1[i] = NCART(sp_i->am1);
         nbf2[i] = NCART(sp_i->am2);
         off12[i + 1] = off12[i] + nbf1[i] * nbf2[i];
@@ -408,7 +408,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
     int    min_adm_level  = h2pack->min_adm_level;
     int    max_level      = h2pack->max_level;
     int    max_child      = h2pack->max_child;
-    int    num_unc_sp     = h2eri->num_unc_sp;
+    int    num_sp         = h2eri->num_sp;
     int    pp_npts_layer  = h2eri->pp_npts_layer;
     int    pp_nlayer_ext  = h2eri->pp_nlayer_ext;
     int    *children      = h2pack->children;
@@ -418,15 +418,15 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
     int    *node_level    = h2pack->node_level;
     int    *leaf_nodes    = h2pack->height_nodes;
     int    *pt_cluster    = h2pack->pt_cluster;
-    int    *unc_sp_nbfp   = h2eri->unc_sp_nbfp;
+    int    *sp_nbfp       = h2eri->sp_nbfp;
     int    *index_seq     = h2eri->index_seq;
     double *enbox         = h2pack->enbox;
     double *box_extent    = h2eri->box_extent;
-    double *unc_sp_center = h2eri->unc_sp_center;
-    double *unc_sp_extent = h2eri->unc_sp_extent;
+    double *sp_center     = h2eri->sp_center;
+    double *sp_extent     = h2eri->sp_extent;
     void   *stop_param    = &h2pack->QR_stop_tol;
-    multi_sp_t *unc_sp = h2eri->unc_sp;
-    shell_t *unc_sp_shells = h2eri->unc_sp_shells;
+    multi_sp_t *sp = h2eri->sp;
+    shell_t *sp_shells = h2eri->sp_shells;
     
     // 1. Allocate U and J
     h2pack->n_UJ  = n_node;
@@ -464,7 +464,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         for (int j = level_i + 1; j <= max_level; j++)
         {
             int idx = lvl_n_leaf[j];
-            lvl_leaf[level_i * n_leaf_node + idx] = leaf_i;
+            lvl_leaf[j * n_leaf_node + idx] = leaf_i;
             lvl_n_leaf[j]++;
         }
     }
@@ -524,7 +524,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                     memcpy(pair_idx->data, index_seq + pt_s, sizeof(int) * node_npts);
                     pair_idx->length = node_npts;
                     
-                    int nbfp = H2ERI_gather_sum(unc_sp_nbfp, pair_idx);
+                    int nbfp = H2ERI_gather_sum(sp_nbfp, pair_idx);
                     H2P_int_vec_set_capacity(row_idx, nbfp);
                     for (int k = 0; k < nbfp; k++) row_idx->data[k] = k;
                     row_idx->length = nbfp;
@@ -541,7 +541,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                         H2P_int_vec_concatenate(row_idx, J_row[child_k]);
                         for (int l = row_idx_spos; l < row_idx_epos; l++)
                             row_idx->data[l] += row_idx_offset;
-                        row_idx_offset += H2ERI_gather_sum(unc_sp_nbfp, J_pair[child_k]);
+                        row_idx_offset += H2ERI_gather_sum(sp_nbfp, J_pair[child_k]);
                     }
                 }  // End of "if (node_n_child == 0)"
                 
@@ -595,22 +595,22 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 // (4) Construct NAI and ERI blocks
                 // A_ff : A_blk_nrow-by-A_ff_ncol
                 // A_pp : A_pp_ncol-by-A_blk_nrow, need to be transposed in gemm
-                int A_blk_nrow = H2ERI_gather_sum(unc_sp_nbfp, pair_idx);
-                int A_ff_ncol  = H2ERI_gather_sum(unc_sp_nbfp, node_ff_idx);
+                int A_blk_nrow = H2ERI_gather_sum(sp_nbfp, pair_idx);
+                int A_ff_ncol  = H2ERI_gather_sum(sp_nbfp, node_ff_idx);
                 int A_pp_ncol  = num_pp;
                 H2P_dense_mat_resize(A_ff_pp, A_blk_nrow, A_ff_ncol + A_pp_ncol);
                 double *A_ff = A_ff_pp->data;
                 double *A_pp = A_ff_pp->data + A_blk_nrow * A_ff_ncol;
                 st = H2P_get_wtime_sec();
                 H2ERI_calc_ERI_pairs_to_mat(
-                    unc_sp, pair_idx->length, node_ff_idx->length, pair_idx->data, 
+                    sp, pair_idx->length, node_ff_idx->length, pair_idx->data, 
                     node_ff_idx->data, simint_buff, A_ff, A_ff_ncol
                 );
                 et = H2P_get_wtime_sec();
                 timers[0] += et - st;
                 st = H2P_get_wtime_sec();
                 H2ERI_calc_NAI_pairs_to_mat(
-                    unc_sp_shells, num_unc_sp, pair_idx->length, pair_idx->data, 
+                    sp_shells, num_sp, pair_idx->length, pair_idx->data, 
                     num_pp, pp_x, pp_y, pp_z, A_pp, A_blk_nrow
                 );
                 et = H2P_get_wtime_sec();
@@ -668,7 +668,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 H2P_int_vec_init(&J_pair[node], pair_idx->length);
                 H2P_int_vec_init(&J_row[node],  sub_row_idx->length);
                 H2ERI_extract_shell_pair_idx(
-                    unc_sp, sub_row_idx, pair_idx, 
+                    sp, sub_row_idx, pair_idx, 
                     work_buf, sub_pair, J_row[node]
                 );
                 H2P_int_vec_gather(pair_idx, sub_pair, J_pair[node]);
@@ -766,10 +766,10 @@ void H2ERI_build_B(H2ERI_t h2eri)
     int *r_adm_pairs      = h2pack->r_adm_pairs;
     int *node_level       = h2pack->node_level;
     int *pt_cluster       = h2pack->pt_cluster;
-    int *unc_sp_nbfp      = h2eri->unc_sp_nbfp;
-    int *unc_sp_bfp_sidx  = h2eri->unc_sp_bfp_sidx;
+    int *sp_nbfp          = h2eri->sp_nbfp;
+    int *sp_bfp_sidx      = h2eri->sp_bfp_sidx;
     int *index_seq        = h2eri->index_seq;
-    multi_sp_t    *unc_sp = h2eri->unc_sp;
+    multi_sp_t    *sp     = h2eri->sp;
     H2P_int_vec_t B_blk   = h2pack->B_blk;
     H2P_int_vec_t *J_pair = h2eri->J_pair;
     H2P_int_vec_t *J_row  = h2eri->J_row;
@@ -811,13 +811,13 @@ void H2ERI_build_B(H2ERI_t h2eri)
             int pt_s1 = pt_cluster[2 * node1];
             int pt_e1 = pt_cluster[2 * node1 + 1];
             B_nrow[i] = J_row[node0]->length;
-            B_ncol[i] = unc_sp_bfp_sidx[pt_e1 + 1] - unc_sp_bfp_sidx[pt_s1];
+            B_ncol[i] = sp_bfp_sidx[pt_e1 + 1] - sp_bfp_sidx[pt_s1];
         }
         if (level0 < level1)
         {
             int pt_s0 = pt_cluster[2 * node0];
             int pt_e0 = pt_cluster[2 * node0 + 1];
-            B_nrow[i] = unc_sp_bfp_sidx[pt_e0 + 1] - unc_sp_bfp_sidx[pt_s0];
+            B_nrow[i] = sp_bfp_sidx[pt_e0 + 1] - sp_bfp_sidx[pt_s0];
             B_ncol[i] = J_row[node1]->length;
         }
         size_t Bi_size = (size_t) B_nrow[i] * (size_t) B_ncol[i];
@@ -860,15 +860,15 @@ void H2ERI_build_B(H2ERI_t h2eri)
                 // (1) Two nodes are of the same level, compress on both sides
                 if (level0 == level1)
                 {
-                    int tmpB_nrow  = H2ERI_gather_sum(unc_sp_nbfp, J_pair[node0]);
-                    int tmpB_ncol  = H2ERI_gather_sum(unc_sp_nbfp, J_pair[node1]);
+                    int tmpB_nrow  = H2ERI_gather_sum(sp_nbfp, J_pair[node0]);
+                    int tmpB_ncol  = H2ERI_gather_sum(sp_nbfp, J_pair[node1]);
                     int n_bra_pair = J_pair[node0]->length;
                     int n_ket_pair = J_pair[node1]->length;
                     int *bra_idx   = J_pair[node0]->data;
                     int *ket_idx   = J_pair[node1]->data;
                     H2P_dense_mat_resize(tmpB, tmpB_nrow, tmpB_ncol);
                     H2ERI_calc_ERI_pairs_to_mat(
-                        unc_sp, n_bra_pair, n_ket_pair, 
+                        sp, n_bra_pair, n_ket_pair, 
                         bra_idx, ket_idx, buff, tmpB->data, tmpB->ncol
                     );
                     H2P_dense_mat_select_rows   (tmpB, J_row[node0]);
@@ -879,7 +879,7 @@ void H2ERI_build_B(H2ERI_t h2eri)
                 //     only compress on node0's side
                 if (level0 > level1)
                 {
-                    int tmpB_nrow  = H2ERI_gather_sum(unc_sp_nbfp, J_pair[node0]);
+                    int tmpB_nrow  = H2ERI_gather_sum(sp_nbfp, J_pair[node0]);
                     int tmpB_ncol  = B_ncol[i];
                     int pt_s1      = pt_cluster[2 * node1];
                     int pt_e1      = pt_cluster[2 * node1 + 1];
@@ -889,7 +889,7 @@ void H2ERI_build_B(H2ERI_t h2eri)
                     int *ket_idx   = index_seq + pt_s1;
                     H2P_dense_mat_resize(tmpB, tmpB_nrow, tmpB_ncol);
                     H2ERI_calc_ERI_pairs_to_mat(
-                        unc_sp, n_bra_pair, n_ket_pair, 
+                        sp, n_bra_pair, n_ket_pair, 
                         bra_idx, ket_idx, buff, tmpB->data, tmpB->ncol
                     );
                     H2P_dense_mat_select_rows(tmpB, J_row[node0]);
@@ -900,7 +900,7 @@ void H2ERI_build_B(H2ERI_t h2eri)
                 if (level0 < level1)
                 {
                     int tmpB_nrow  = B_nrow[i];
-                    int tmpB_ncol  = H2ERI_gather_sum(unc_sp_nbfp, J_pair[node1]);
+                    int tmpB_ncol  = H2ERI_gather_sum(sp_nbfp, J_pair[node1]);
                     int pt_s0      = pt_cluster[2 * node0];
                     int pt_e0      = pt_cluster[2 * node0 + 1];
                     int n_bra_pair = pt_e0 - pt_s0 + 1;
@@ -909,7 +909,7 @@ void H2ERI_build_B(H2ERI_t h2eri)
                     int *ket_idx   = J_pair[node1]->data;
                     H2P_dense_mat_resize(tmpB, tmpB_nrow, tmpB_ncol);
                     H2ERI_calc_ERI_pairs_to_mat(
-                        unc_sp, n_bra_pair, n_ket_pair, 
+                        sp, n_bra_pair, n_ket_pair, 
                         bra_idx, ket_idx, buff, tmpB->data, tmpB->ncol
                     );
                     H2P_dense_mat_select_columns(tmpB, J_row[node1]);
@@ -947,15 +947,15 @@ void H2ERI_build_D(H2ERI_t h2eri)
     int n_point          = h2pack->n_point;
     int n_leaf_node      = h2pack->n_leaf_node;
     int n_r_inadm_pair   = h2pack->n_r_inadm_pair;
-    int num_unc_sp       = h2eri->num_unc_sp;
+    int num_sp           = h2eri->num_sp;
     int *leaf_nodes      = h2pack->height_nodes;
     int *pt_cluster      = h2pack->pt_cluster;
     int *r_inadm_pairs   = h2pack->r_inadm_pairs;
-    int *unc_sp_bfp_sidx = h2eri->unc_sp_bfp_sidx;
+    int *sp_bfp_sidx     = h2eri->sp_bfp_sidx;
     int *index_seq       = h2eri->index_seq;
     H2P_int_vec_t D_blk0 = h2pack->D_blk0;
     H2P_int_vec_t D_blk1 = h2pack->D_blk1;
-    multi_sp_t *unc_sp   = h2eri->unc_sp;
+    multi_sp_t *sp       = h2eri->sp;
     
     // 1. Allocate D
     h2pack->n_D = n_leaf_node + n_r_inadm_pair;
@@ -976,7 +976,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
         int node = leaf_nodes[i];
         int pt_s = pt_cluster[2 * node];
         int pt_e = pt_cluster[2 * node + 1];
-        int node_nbfp = unc_sp_bfp_sidx[pt_e + 1] - unc_sp_bfp_sidx[pt_s];
+        int node_nbfp = sp_bfp_sidx[pt_e + 1] - sp_bfp_sidx[pt_s];
         size_t Di_size = (size_t) node_nbfp * (size_t) node_nbfp;
         D_nrow[i] = node_nbfp;
         D_ncol[i] = node_nbfp;
@@ -998,8 +998,8 @@ void H2ERI_build_D(H2ERI_t h2eri)
         int pt_s1 = pt_cluster[2 * node1];
         int pt_e0 = pt_cluster[2 * node0 + 1];
         int pt_e1 = pt_cluster[2 * node1 + 1];
-        int node0_nbfp = unc_sp_bfp_sidx[pt_e0 + 1] - unc_sp_bfp_sidx[pt_s0];
-        int node1_nbfp = unc_sp_bfp_sidx[pt_e1 + 1] - unc_sp_bfp_sidx[pt_s1];
+        int node0_nbfp = sp_bfp_sidx[pt_e0 + 1] - sp_bfp_sidx[pt_s0];
+        int node1_nbfp = sp_bfp_sidx[pt_e1 + 1] - sp_bfp_sidx[pt_s1];
         size_t Di_size = (size_t) node0_nbfp * (size_t) node1_nbfp;
         D_nrow[i + n_leaf_node] = node0_nbfp;
         D_ncol[i + n_leaf_node] = node1_nbfp;
@@ -1043,7 +1043,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
                 int *bra_idx = index_seq + pt_s;
                 int *ket_idx = bra_idx;
                 H2ERI_calc_ERI_pairs_to_mat(
-                    unc_sp, node_npts, node_npts, 
+                    sp, node_npts, node_npts, 
                     bra_idx, ket_idx, buff, Di, ld_Di
                 );
             }
@@ -1070,7 +1070,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
                 int *bra_idx = index_seq + pt_s0;
                 int *ket_idx = index_seq + pt_s1;
                 H2ERI_calc_ERI_pairs_to_mat(
-                    unc_sp, node0_npts, node1_npts, 
+                    sp, node0_npts, node1_npts, 
                     bra_idx, ket_idx, buff, Di, ld_Di
                 );
             }
