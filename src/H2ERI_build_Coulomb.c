@@ -7,35 +7,37 @@
 #include "H2Pack_matvec.h"
 #include "H2ERI_typedef.h"
 
-// "Uncontract" the density matrix according to FUSP and unroll 
+// TODO: OpenMP parallelize H2ERI_uncontract_den_mat() and H2ERI_contract_H2_matvec()
+
+// "Uncontract" the density matrix according to SSP and unroll 
 // the result to a column for H2 matvec.
 // Input parameters:
-//   den_mat                 : Symmetric density matrix, size h2eri->num_bf^2
-//   h2eri->num_bf           : Number of basis functions in the system
-//   h2eri->num_unc_sp       : Number of fully uncontracted shell pairs (FUSP)
-//   h2eri->shell_bf_sidx    : Array, size nshell, indices of each shell's 
-//                             first basis function
-//   h2eri->unc_sp_bfp_sidx  : Array, size num_unc_sp+1, indices of each 
-//                             FUSP's first basis function pair
-//   h2eri->unc_sp_shell_idx : Array, size 2 * num_unc_sp, each row is 
-//                             the contracted shell indices of a FUSP
+//   den_mat              : Symmetric density matrix, size h2eri->num_bf^2
+//   h2eri->num_bf        : Number of basis functions in the system
+//   h2eri->num_sp        : Number of screened shell pairs (SSP)
+//   h2eri->shell_bf_sidx : Array, size nshell, indices of each shell's 
+//                          first basis function
+//   h2eri->sp_bfp_sidx   : Array, size num_sp+1, indices of each 
+//                          SSP's first basis function pair
+//   h2eri->sp_shell_idx  : Array, size 2 * num_sp, each row is 
+//                          the contracted shell indices of a SSP
 // Output parameter:
-//   h2eri->unc_denmat_x : Array, size num_unc_sp_bfp, uncontracted 
+//   h2eri->unc_denmat_x  : Array, size num_sp_bfp, uncontracted density matrix
 void H2ERI_uncontract_den_mat(H2ERI_t h2eri, const double *den_mat)
 {
     int num_bf = h2eri->num_bf;
-    int num_unc_sp = h2eri->num_unc_sp;
-    int *shell_bf_sidx    = h2eri->shell_bf_sidx;
-    int *unc_sp_bfp_sidx  = h2eri->unc_sp_bfp_sidx;
-    int *unc_sp_shell_idx = h2eri->unc_sp_shell_idx;
+    int num_sp = h2eri->num_sp;
+    int *shell_bf_sidx = h2eri->shell_bf_sidx;
+    int *sp_bfp_sidx   = h2eri->sp_bfp_sidx;
+    int *sp_shell_idx  = h2eri->sp_shell_idx;
     double *x = h2eri->unc_denmat_x;
     
-    for (int i = 0; i < num_unc_sp; i++)
+    for (int i = 0; i < num_sp; i++)
     {
-        int x_spos = unc_sp_bfp_sidx[i];
-        int x_epos = unc_sp_bfp_sidx[i + 1];
-        int shell_idx0 = unc_sp_shell_idx[i];
-        int shell_idx1 = unc_sp_shell_idx[i + num_unc_sp];
+        int x_spos = sp_bfp_sidx[i];
+        int x_epos = sp_bfp_sidx[i + 1];
+        int shell_idx0 = sp_shell_idx[i];
+        int shell_idx1 = sp_shell_idx[i + num_sp];
         int srow = shell_bf_sidx[shell_idx0];
         int erow = shell_bf_sidx[shell_idx0 + 1];
         int scol = shell_bf_sidx[shell_idx1];
@@ -59,37 +61,37 @@ void H2ERI_uncontract_den_mat(H2ERI_t h2eri, const double *den_mat)
     }
 }
 
-// "Contract" the H2 matvec result according to FUSP and reshape
+// "Contract" the H2 matvec result according to SSP and reshape
 // the result to form a symmetric Coulomb matrix
 // Input parameters:
-//   h2eri->num_bf           : Number of basis functions in the system
-//   h2eri->num_unc_sp       : Number of fully uncontracted shell pairs (FUSP)
-//   h2eri->shell_bf_sidx    : Array, size nshell, indices of each shell's 
-//                             first basis function
-//   h2eri->unc_sp_bfp_sidx  : Array, size num_unc_sp+1, indices of each 
-//                             FUSP's first basis function pair
-//   h2eri->unc_sp_shell_idx : Array, size 2 * num_unc_sp, each row is 
-//                             the contracted shell indices of a FUSP
-//   h2eri->H2_matvec_y      : Array, size num_unc_sp_bfp, H2 matvec result 
+//   h2eri->num_bf        : Number of basis functions in the system
+//   h2eri->num_sp        : Number of SSP
+//   h2eri->shell_bf_sidx : Array, size nshell, indices of each shell's 
+//                          first basis function
+//   h2eri->sp_bfp_sidx   : Array, size num_sp+1, indices of each 
+//                          SSP's first basis function pair
+//   h2eri->sp_shell_idx  : Array, size 2 * num_sp, each row is 
+//                          the contracted shell indices of a SSP
+//   h2eri->H2_matvec_y   : Array, size num_sp_bfp, H2 matvec result 
 // Output parameter:
 //   J_mat : Symmetric Coulomb matrix, size h2eri->num_bf^2
 void H2ERI_contract_H2_matvec(H2ERI_t h2eri, double *J_mat)
 {
     int num_bf = h2eri->num_bf;
-    int num_unc_sp = h2eri->num_unc_sp;
-    int *shell_bf_sidx    = h2eri->shell_bf_sidx;
-    int *unc_sp_bfp_sidx  = h2eri->unc_sp_bfp_sidx;
-    int *unc_sp_shell_idx = h2eri->unc_sp_shell_idx;
+    int num_sp = h2eri->num_sp;
+    int *shell_bf_sidx = h2eri->shell_bf_sidx;
+    int *sp_bfp_sidx   = h2eri->sp_bfp_sidx;
+    int *sp_shell_idx  = h2eri->sp_shell_idx;
     double *y = h2eri->H2_matvec_y;
     
     for (int i = 0; i < num_bf * num_bf; i++) J_mat[i] = 0.0;
     
-    for (int i = 0; i < num_unc_sp; i++)
+    for (int i = 0; i < num_sp; i++)
     {
-        int y_spos = unc_sp_bfp_sidx[i];
-        int y_epos = unc_sp_bfp_sidx[i + 1];
-        int shell_idx0 = unc_sp_shell_idx[i];
-        int shell_idx1 = unc_sp_shell_idx[i + num_unc_sp];
+        int y_spos = sp_bfp_sidx[i];
+        int y_epos = sp_bfp_sidx[i + 1];
+        int shell_idx0 = sp_shell_idx[i];
+        int shell_idx1 = sp_shell_idx[i + num_sp];
         int srow = shell_bf_sidx[shell_idx0];
         int erow = shell_bf_sidx[shell_idx0 + 1];
         int scol = shell_bf_sidx[shell_idx1];
@@ -134,7 +136,7 @@ void H2ERI_build_Coulomb(H2ERI_t h2eri, const double *den_mat, double *J_mat)
 {
     if (h2eri->unc_denmat_x == NULL)
     {
-        size_t vec_msize = sizeof(double) * h2eri->num_unc_sp_bfp;
+        size_t vec_msize = sizeof(double) * h2eri->num_sp_bfp;
         h2eri->unc_denmat_x = (double *) malloc(vec_msize);
         h2eri->H2_matvec_y  = (double *) malloc(vec_msize);
         assert(h2eri->unc_denmat_x != NULL && h2eri->H2_matvec_y != NULL);
