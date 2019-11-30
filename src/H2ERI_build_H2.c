@@ -487,21 +487,22 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         #pragma omp parallel num_threads(n_thread_i)
         {
             int tid = omp_get_thread_num();
-            H2P_thread_buf_t thread_buf = h2pack->tb[tid];
-            H2P_int_vec_t   pair_idx    = thread_buf->idx0;
-            H2P_int_vec_t   row_idx     = thread_buf->idx1;
-            H2P_int_vec_t   node_ff_idx = thread_buf->idx2;
-            H2P_int_vec_t   ID_buff     = thread_buf->idx2;
-            H2P_int_vec_t   sub_idx     = thread_buf->idx3;
-            H2P_int_vec_t   sub_row_idx = thread_buf->idx2;
-            H2P_int_vec_t   work_buf    = thread_buf->idx3;
-            H2P_int_vec_t   sub_pair    = thread_buf->idx4;
-            H2P_dense_mat_t pp          = thread_buf->mat0;
-            H2P_dense_mat_t A_ff_pp     = thread_buf->mat1;
-            H2P_dense_mat_t randn_mat   = thread_buf->mat0; 
-            H2P_dense_mat_t A_block     = thread_buf->mat2;
-            H2P_dense_mat_t QR_buff     = thread_buf->mat0;  
-            simint_buff_t   simint_buff = h2eri->simint_buffs[tid];
+            H2P_thread_buf_t thread_buf     = h2pack->tb[tid];
+            H2P_int_vec_t    pair_idx       = thread_buf->idx0;
+            H2P_int_vec_t    row_idx        = thread_buf->idx1;
+            H2P_int_vec_t    node_ff_idx    = thread_buf->idx2;
+            H2P_int_vec_t    ID_buff        = thread_buf->idx2;
+            H2P_int_vec_t    sub_idx        = thread_buf->idx3;
+            H2P_int_vec_t    sub_row_idx    = thread_buf->idx2;
+            H2P_int_vec_t    work_buf       = thread_buf->idx3;
+            H2P_int_vec_t    sub_pair       = thread_buf->idx4;
+            H2P_dense_mat_t  pp             = thread_buf->mat0;
+            H2P_dense_mat_t  A_ff_pp        = thread_buf->mat1;
+            H2P_dense_mat_t  randn_mat      = thread_buf->mat0; 
+            H2P_dense_mat_t  A_block        = thread_buf->mat2;
+            H2P_dense_mat_t  QR_buff        = thread_buf->mat0;  
+            simint_buff_t    simint_buff    = h2eri->simint_buffs[tid];
+            eri_batch_buff_t eri_batch_buff = h2eri->eri_batch_buffs[tid];
             double *timers = U_timers + 8 * tid;
             double st, et;
             
@@ -604,7 +605,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 st = H2P_get_wtime_sec();
                 H2ERI_calc_ERI_pairs_to_mat(
                     sp, pair_idx->length, node_ff_idx->length, pair_idx->data, 
-                    node_ff_idx->data, simint_buff, A_ff, A_ff_ncol
+                    node_ff_idx->data, simint_buff, A_ff, A_ff_ncol, eri_batch_buff
                 );
                 et = H2P_get_wtime_sec();
                 timers[0] += et - st;
@@ -842,7 +843,8 @@ void H2ERI_build_B(H2ERI_t h2eri)
     {
         int tid = omp_get_thread_num();
         H2P_dense_mat_t tmpB = h2pack->tb[tid]->mat0;
-        simint_buff_t buff = h2eri->simint_buffs[tid];
+        simint_buff_t simint_buff = h2eri->simint_buffs[tid];
+        eri_batch_buff_t eri_batch_buff = h2eri->eri_batch_buffs[tid];
         
         h2pack->tb[tid]->timer = -H2P_get_wtime_sec();
         #pragma omp for schedule(dynamic) nowait
@@ -868,8 +870,8 @@ void H2ERI_build_B(H2ERI_t h2eri)
                     int *ket_idx   = J_pair[node1]->data;
                     H2P_dense_mat_resize(tmpB, tmpB_nrow, tmpB_ncol);
                     H2ERI_calc_ERI_pairs_to_mat(
-                        sp, n_bra_pair, n_ket_pair, 
-                        bra_idx, ket_idx, buff, tmpB->data, tmpB->ncol
+                        sp, n_bra_pair, n_ket_pair, bra_idx, ket_idx, 
+                        simint_buff, tmpB->data, tmpB->ncol, eri_batch_buff
                     );
                     H2P_dense_mat_select_rows   (tmpB, J_row[node0]);
                     H2P_dense_mat_select_columns(tmpB, J_row[node1]);
@@ -889,8 +891,8 @@ void H2ERI_build_B(H2ERI_t h2eri)
                     int *ket_idx   = index_seq + pt_s1;
                     H2P_dense_mat_resize(tmpB, tmpB_nrow, tmpB_ncol);
                     H2ERI_calc_ERI_pairs_to_mat(
-                        sp, n_bra_pair, n_ket_pair, 
-                        bra_idx, ket_idx, buff, tmpB->data, tmpB->ncol
+                        sp, n_bra_pair, n_ket_pair, bra_idx, ket_idx, 
+                        simint_buff, tmpB->data, tmpB->ncol, eri_batch_buff
                     );
                     H2P_dense_mat_select_rows(tmpB, J_row[node0]);
                 }
@@ -909,8 +911,8 @@ void H2ERI_build_B(H2ERI_t h2eri)
                     int *ket_idx   = J_pair[node1]->data;
                     H2P_dense_mat_resize(tmpB, tmpB_nrow, tmpB_ncol);
                     H2ERI_calc_ERI_pairs_to_mat(
-                        sp, n_bra_pair, n_ket_pair, 
-                        bra_idx, ket_idx, buff, tmpB->data, tmpB->ncol
+                        sp, n_bra_pair, n_ket_pair, bra_idx, ket_idx, 
+                        simint_buff, tmpB->data, tmpB->ncol, eri_batch_buff
                     );
                     H2P_dense_mat_select_columns(tmpB, J_row[node1]);
                 }
@@ -1022,7 +1024,8 @@ void H2ERI_build_D(H2ERI_t h2eri)
     #pragma omp parallel num_threads(n_thread)
     {
         int tid = omp_get_thread_num();
-        simint_buff_t buff = h2eri->simint_buffs[tid];
+        simint_buff_t simint_buff = h2eri->simint_buffs[tid];
+        eri_batch_buff_t eri_batch_buff = h2eri->eri_batch_buffs[tid];
         
         h2pack->tb[tid]->timer = -H2P_get_wtime_sec();
         
@@ -1043,8 +1046,8 @@ void H2ERI_build_D(H2ERI_t h2eri)
                 int *bra_idx = index_seq + pt_s;
                 int *ket_idx = bra_idx;
                 H2ERI_calc_ERI_pairs_to_mat(
-                    sp, node_npts, node_npts, 
-                    bra_idx, ket_idx, buff, Di, ld_Di
+                    sp, node_npts, node_npts, bra_idx, ket_idx, 
+                    simint_buff, Di, ld_Di, eri_batch_buff
                 );
             }
         }  // End of i_blk0 loop
@@ -1070,8 +1073,8 @@ void H2ERI_build_D(H2ERI_t h2eri)
                 int *bra_idx = index_seq + pt_s0;
                 int *ket_idx = index_seq + pt_s1;
                 H2ERI_calc_ERI_pairs_to_mat(
-                    sp, node0_npts, node1_npts, 
-                    bra_idx, ket_idx, buff, Di, ld_Di
+                    sp, node0_npts, node1_npts, bra_idx, ket_idx, 
+                    simint_buff, Di, ld_Di, eri_batch_buff
                 );
             }
         }  // End of i_blk1 loop

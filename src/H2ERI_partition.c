@@ -276,8 +276,13 @@ void H2ERI_partition(H2ERI_t h2eri)
     
     // Initialize thread local Simint buffer
     int n_thread = h2eri->h2pack->n_thread;
-    h2eri->simint_buffs = (simint_buff_t *) malloc(sizeof(simint_buff_t) * n_thread);
-    assert(h2eri->simint_buffs != NULL);
+    h2eri->simint_buffs    = (simint_buff_t*)    malloc(sizeof(simint_buff_t)    * n_thread);
+    h2eri->eri_batch_buffs = (eri_batch_buff_t*) malloc(sizeof(eri_batch_buff_t) * n_thread);
+    assert(h2eri->simint_buffs    != NULL);
+    assert(h2eri->eri_batch_buffs != NULL);
     for (int i = 0; i < n_thread; i++)
+    {
         CMS_init_Simint_buff(h2eri->max_am, &h2eri->simint_buffs[i]);
+        CMS_init_eri_batch_buff(h2eri->max_am, 4, &h2eri->eri_batch_buffs[i]);
+    }
 }
