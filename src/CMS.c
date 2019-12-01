@@ -247,6 +247,7 @@ void CMS_init_Simint_buff(const int max_am, simint_buff_t *buff_)
 // Destroy a Simint buffer structure
 void CMS_destroy_Simint_buff(simint_buff_t buff)
 {
+    if (buff == NULL) return;
     buff->work_msize = 0;
     buff->ERI_msize  = 0;
     SIMINT_FREE(buff->work_mem);
@@ -257,45 +258,187 @@ void CMS_destroy_Simint_buff(simint_buff_t buff)
     simint_free_multi_shellpair(&buff->ket_pair);
 }
 
-// Calculate shell quartet pairs (N_i M_i|Q_j P_j) and unfold all ERI 
-// results to form a matrix
-void H2ERI_calc_ERI_pairs_to_mat(
-    const multi_sp_t *unc_sp, const int n_bra_pair, const int n_ket_pair,
-    const int *bra_idx, const int *ket_idx, simint_buff_t buff, 
+// Initialize an ERI batch buffer structure
+void CMS_init_eri_batch_buff(const int max_am, const int num_param, eri_batch_buff_t *buff_)
+{
+    eri_batch_buff_t buff = (eri_batch_buff_t) malloc(sizeof(struct eri_batch_buff));
+    assert(buff != NULL);
+    
+    int num_batch = (max_am + 1) * (max_am + 1);
+    buff->max_am    = max_am;
+    buff->num_batch = num_batch;
+    buff->num_param = num_param;
+
+    int total_ket_pairs = num_batch * NPAIR_SIMD;
+    buff->batch_cnt = (int*) malloc(sizeof(int) * num_batch);
+    buff->sq_param  = (int*) malloc(sizeof(int) * total_ket_pairs * num_param);
+    buff->ket_pairs = (multi_sp_p*) malloc(sizeof(multi_sp_p) * total_ket_pairs);
+    assert(buff->batch_cnt != NULL);
+    assert(buff->sq_param  != NULL);
+    assert(buff->ket_pairs != NULL);
+    memset(buff->batch_cnt, 0, sizeof(int) * num_batch);
+    simint_initialize_multi_shellpair(&buff->ket_multipairs);
+    
+    *buff_ = buff;
+}
+
+// Destroy an ERI batch buffer structure
+void CMS_destroy_eri_batch_buff(eri_batch_buff_t buff)
+{
+    if (buff == NULL) return;
+    buff->max_am    = -1;
+    buff->num_batch = 0;
+    buff->num_param = 0;
+    free(buff->batch_cnt);
+    free(buff->sq_param);
+    free(buff->ket_pairs);
+    simint_free_multi_shellpair(&buff->ket_multipairs);
+}
+
+// Push a ket pair into an ERI batch
+int CMS_push_ket_pair_to_eri_batch(
+    eri_batch_buff_t buff, const int ket_am1, const int ket_am2, 
+    const multi_sp_p ket_pair, const int *param
+)
+{
+    int batch_id = ket_am1 * (buff->max_am + 1) + ket_am2;
+    int batch_idx = buff->batch_cnt[batch_id];
+    if (batch_idx >= NPAIR_SIMD) 
+    {
+        return 0;
+    } else {
+        int sq_offset = batch_id * NPAIR_SIMD + batch_idx;
+        buff->ket_pairs[sq_offset] = ket_pair;
+        int *sq_param_p = buff->sq_param + sq_offset * buff->num_param;
+        memcpy(sq_param_p, param, sizeof(int) * buff->num_param);
+        buff->batch_cnt[batch_id]++;
+        return (batch_idx+1);
+    }
+}
+
+// Calculate all shell quartets in an ERI batch 
+void CMS_calc_ERI_batch(
+    eri_batch_buff_t eri_batch_buff, simint_buff_t simint_buff, 
+    const int ket_am1, const int ket_am2, int *eri_size, int **batch_param
+)
+{
+    int batch_id = ket_am1 * (eri_batch_buff->max_am + 1) + ket_am2;
+    int n_pair   = eri_batch_buff->batch_cnt[batch_id];
+    multi_sp_p bra_pair         = eri_batch_buff->bra_pair;
+    multi_sp_p ket_multipairs   = &eri_batch_buff->ket_multipairs;
+    multi_sp_p *batch_ket_pairs = eri_batch_buff->ket_pairs + batch_id * NPAIR_SIMD;
+    
+    int bra_am1  = bra_pair->am1;
+    int bra_am2  = bra_pair->am2;
+    *eri_size    = NCART(bra_am1) * NCART(bra_am2) * NCART(ket_am1) * NCART(ket_am2);
+    *batch_param = eri_batch_buff->sq_param + batch_id * NPAIR_SIMD * eri_batch_buff->num_param;
+    
+    ket_multipairs->nprim = 0;
+    simint_cat_shellpairs(
+        n_pair, (const struct simint_multi_shellpair **) batch_ket_pairs, 
+        ket_multipairs, 0
+    );
+    
+    int ret = simint_compute_eri(
+        bra_pair, ket_multipairs, 0.0, 
+        simint_buff->work_mem, simint_buff->ERI_mem
+    );
+    if (ret == 0)
+    {
+        *eri_size = 0;
+        *batch_param = NULL;
+    } else {
+        eri_batch_buff->batch_cnt[batch_id] = 0;
+    }
+}
+
+void H2ERI_copy_ERI_to_mat(
+    const int num_sq, double *ERI_mem, int *batch_param,
     double *mat, const int ldm
 )
 {
-    double *work_mem = buff->work_mem;
-    double *ERI_mem  = buff->ERI_mem;
-    
+    int ncart_MN = batch_param[0];
+    int ncart_PQ = batch_param[1];
+    int eri_size = ncart_MN * ncart_PQ;
+    for (int i = 0; i < num_sq; i++)
+    {
+        int row_idx  = batch_param[4 * i + 2];
+        int col_idx  = batch_param[4 * i + 3];
+        double *mat_blk = mat + row_idx * ldm + col_idx;
+        double *ERI_blk = ERI_mem + i * eri_size;
+        for (int j = 0; j < ncart_MN; j++)
+        {
+            double *mat_blk_row = mat_blk + j * ldm;
+            double *ERI_blk_row = ERI_blk + j * ncart_PQ;
+            memcpy(mat_blk_row, ERI_blk_row, sizeof(double) * ncart_PQ);
+        }
+    }
+}
+
+// Calculate shell quartet pairs (N_i M_i|Q_j P_j) and unfold all ERI 
+// results to form a matrix
+void H2ERI_calc_ERI_pairs_to_mat(
+    const multi_sp_p sp, const int n_bra_pair, const int n_ket_pair,
+    const int *bra_idx, const int *ket_idx, simint_buff_t simint_buff, 
+    double *mat, const int ldm, eri_batch_buff_t eri_batch_buff
+)
+{
+    int param[4];
     int row_idx = 0;
     for (int i = 0; i < n_bra_pair; i++)
     {
-        const multi_sp_t *bra_pair = unc_sp + bra_idx[i];
+        const multi_sp_p bra_pair = sp + bra_idx[i];
         int am_M = bra_pair->am1;
         int am_N = bra_pair->am2;
         int ncart_MN = NCART(am_M) * NCART(am_N);
+        eri_batch_buff->bra_pair = bra_pair;
+        memset(eri_batch_buff->batch_cnt, 0, sizeof(int) * eri_batch_buff->num_batch);
+        param[0] = ncart_MN;
+        param[2] = row_idx;
         
         int col_idx = 0;
         for (int j = 0; j < n_ket_pair; j++)
         {
-            const multi_sp_t *ket_pair = unc_sp + ket_idx[j];
+            const multi_sp_p ket_pair = sp + ket_idx[j];
             int am_P = ket_pair->am1;
             int am_Q = ket_pair->am2;
             int ncart_PQ = NCART(am_P) * NCART(am_Q);
+            param[1] = ncart_PQ;
+            param[3] = col_idx;
             
-            double *mat_blk = mat + row_idx * ldm + col_idx;
-            int ret = simint_compute_eri(bra_pair, ket_pair, 0.0, work_mem, ERI_mem);
-            
-            for (int k = 0; k < ncart_MN; k++)
+            int num_sq = CMS_push_ket_pair_to_eri_batch(
+                eri_batch_buff, am_P, am_Q, 
+                ket_pair, &param[0]
+            );
+            if (num_sq == NPAIR_SIMD)
             {
-                double *mat_blk_row = mat_blk + k * ldm;
-                double *ERI_ket_row = ERI_mem + k * ncart_PQ;
-                memcpy(mat_blk_row, ERI_ket_row, sizeof(double) * ncart_PQ);
+                int eri_size, *batch_param;
+                CMS_calc_ERI_batch(
+                    eri_batch_buff, simint_buff, 
+                    am_P, am_Q, &eri_size, &batch_param
+                );
+                assert(eri_size > 0);
+                H2ERI_copy_ERI_to_mat(num_sq, simint_buff->ERI_mem, batch_param, mat, ldm);
             }
-            
+
             col_idx += ncart_PQ;
         }
+        
+        for (int ibatch = 0; ibatch < eri_batch_buff->num_batch; ibatch++)
+        {
+            int num_sq = eri_batch_buff->batch_cnt[ibatch];
+            if (num_sq == 0) continue;
+            int am_P = ibatch / (eri_batch_buff->max_am + 1);
+            int am_Q = ibatch % (eri_batch_buff->max_am + 1);
+            int eri_size, *batch_param;
+            CMS_calc_ERI_batch(
+                eri_batch_buff, simint_buff, 
+                am_P, am_Q, &eri_size, &batch_param
+            );
+            assert(eri_size > 0);
+            H2ERI_copy_ERI_to_mat(num_sq, simint_buff->ERI_mem, batch_param, mat, ldm);
+        }
+        
         row_idx += ncart_MN;
     }
 }
@@ -303,17 +446,17 @@ void H2ERI_calc_ERI_pairs_to_mat(
 // Calculate NAI pairs (N_i M_i|[x_j, y_j, z_j]) and unfold all NAI 
 // results to form a matrix
 void H2ERI_calc_NAI_pairs_to_mat(
-    const shell_t *unc_sp_shells, const int num_unc_sp,
-    const int num_sp, const int *sp_idx, const int n_point,
+    const shell_t *sp_shells, const int num_sp,
+    const int n_bra_pair, const int *sp_idx, const int n_point,
     double *x, double *y, double *z, double *mat, const int ldm
 )
 {
     double atomic_nums = 1.0;
     int col_idx = 0;
-    for (int j = 0; j < num_sp; j++)
+    for (int j = 0; j < n_bra_pair; j++)
     {
-        const shell_t *M_shell = unc_sp_shells + sp_idx[j];
-        const shell_t *N_shell = unc_sp_shells + sp_idx[j] + num_unc_sp;
+        const shell_t *M_shell = sp_shells + sp_idx[j];
+        const shell_t *N_shell = sp_shells + sp_idx[j] + num_sp;
         int am_M = M_shell->am;
         int am_N = N_shell->am;
         int ncart_MN = NCART(am_M) * NCART(am_N);

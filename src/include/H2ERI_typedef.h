@@ -41,7 +41,8 @@ struct H2ERI
     H2P_int_vec_t *J_row;         // Array, size h2pack->n_node, skeleton row indices in each node's shell pairs
     H2P_int_vec_t *ovlp_ff_idx;   // Array, size h2pack->n_node, i-th vector contains the far field 
                                   // points whose extents are overlapped with the near field of i-th node
-    simint_buff_t *simint_buffs;  // Array, size h2pack->n_thread, simint_buff structures for each thread
+    simint_buff_t    *simint_buffs;     // Array, size h2pack->n_thread, simint_buff structures for each thread
+    eri_batch_buff_t *eri_batch_buffs;  // Array, size h2pack->n_thread, eri_batch_buff structures for each thread
     H2Pack_t h2pack;              // H2Pack data structure
 };
 

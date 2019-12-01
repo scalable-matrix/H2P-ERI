@@ -18,26 +18,27 @@ void H2ERI_init(H2ERI_t *h2eri_, const double scr_tol, const double ext_tol, con
     h2eri->scr_tol = scr_tol;
     h2eri->ext_tol = ext_tol;
     
-    h2eri->pp_npts_layer = 384;
-    h2eri->pp_nlayer_ext = 3;
+    h2eri->pp_npts_layer   = 384;
+    h2eri->pp_nlayer_ext   = 3;
     
-    h2eri->shell_bf_sidx = NULL;
-    h2eri->sp_nbfp       = NULL;
-    h2eri->sp_bfp_sidx   = NULL;
-    h2eri->sp_shell_idx  = NULL;
-    h2eri->index_seq     = NULL;
-    h2eri->sp_center     = NULL;
-    h2eri->sp_extent     = NULL;
-    h2eri->box_extent    = NULL;
-    h2eri->unc_denmat_x  = NULL;
-    h2eri->H2_matvec_y   = NULL;
-    h2eri->shells        = NULL;
-    h2eri->sp_shells     = NULL;
-    h2eri->sp            = NULL;
-    h2eri->J_pair        = NULL;
-    h2eri->J_row         = NULL;
-    h2eri->ovlp_ff_idx   = NULL;
-    h2eri->simint_buffs  = NULL;
+    h2eri->shell_bf_sidx   = NULL;
+    h2eri->sp_nbfp         = NULL;
+    h2eri->sp_bfp_sidx     = NULL;
+    h2eri->sp_shell_idx    = NULL;
+    h2eri->index_seq       = NULL;
+    h2eri->sp_center       = NULL;
+    h2eri->sp_extent       = NULL;
+    h2eri->box_extent      = NULL;
+    h2eri->unc_denmat_x    = NULL;
+    h2eri->H2_matvec_y     = NULL;
+    h2eri->shells          = NULL;
+    h2eri->sp_shells       = NULL;
+    h2eri->sp              = NULL;
+    h2eri->J_pair          = NULL;
+    h2eri->J_row           = NULL;
+    h2eri->ovlp_ff_idx     = NULL;
+    h2eri->simint_buffs    = NULL;
+    h2eri->eri_batch_buffs = NULL;
     
     double _QR_tol = QR_tol;
     H2P_init(&h2eri->h2pack, 3, 1, QR_REL_NRM, &_QR_tol);
@@ -76,8 +77,12 @@ void H2ERI_destroy(H2ERI_t h2eri)
     free(h2eri->ovlp_ff_idx);
     
     for (int i = 0; i < h2eri->h2pack->n_thread; i++)
+    {
         CMS_destroy_Simint_buff(h2eri->simint_buffs[i]);
+        CMS_destroy_eri_batch_buff(h2eri->eri_batch_buffs[i]);
+    }
     free(h2eri->simint_buffs);
+    free(h2eri->eri_batch_buffs);
     
     H2P_destroy(h2eri->h2pack);
 }
@@ -86,11 +91,8 @@ void H2ERI_destroy(H2ERI_t h2eri)
 void H2ERI_print_statistic(H2ERI_t h2eri)
 {
     printf("================ H2ERI molecular system info ================\n");
-    printf("  * Number of atoms                     : %d\n", h2eri->natom);
-    printf("  * Number of shells                    : %d\n", h2eri->nshell);
-    printf("  * Number of basis functions           : %d\n", h2eri->num_bf);
-    printf("  * Number of symm-unique screened FUSP : %d\n", h2eri->num_sp);
-    printf("  * Number of FUSP basis function pairs : %d\n", h2eri->num_sp_bfp);
+    printf("  * Number of atoms / shells / basis functions : %d, %d, %d\n", h2eri->natom, h2eri->nshell, h2eri->num_bf);
+    printf("  * Number of symm-unique screened shell pairs : %d\n", h2eri->num_sp);
     
     H2P_print_statistic(h2eri->h2pack);
 }

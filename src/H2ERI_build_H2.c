@@ -109,13 +109,13 @@ void H2ERI_generate_proxy_point_layers(
 //   1. Are admissible from i-th node;
 //   2. Their extents overlap with i-th node's near field boxes (super cell).
 // Input parameters:
-//   h2eri->h2pack        : H2 tree partitioning info
-//   h2eri->num_sp    : Number of fully uncontracted shell pairs (FUSP)
-//   h2eri->sp_center : Array, size 3 * num_sp, centers of FUSP, sorted
-//   h2eri->sp_extent : Array, size num_sp, extents of FUSP, sorted
+//   h2eri->h2pack    : H2 tree partitioning info
+//   h2eri->num_sp    : Number of screened shell pairs (SSP)
+//   h2eri->sp_center : Array, size 3 * num_sp, centers of SSP, sorted
+//   h2eri->sp_extent : Array, size num_sp, extents of SSP, sorted
 // Output parameters:
 //   h2eri->ovlp_ff_idx : Array, size h2pack->n_node, i-th vector contains
-//                        FUSP indices that satisfy the requirements.
+//                        SSP indices that satisfy the requirements.
 void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri)
 {
     H2Pack_t h2pack = h2eri->h2pack;
@@ -266,13 +266,13 @@ void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri)
 // Extract shell pair and row indices of a target row index set from
 // a given set of FISP
 // Input parameters:
-//   sp   : Array, size num_sp, FUSP
+//   sp   : Array, size num_sp, SSP
 //   row_idx  : Vector, target row indices set
-//   sp_idx   : Vector, given FUSP set 
+//   sp_idx   : Vector, given SSP set 
 //   work_buf : Vector, work buffer
 // Output parameters:
-//   pair_idx    : Vector, FUSP indices that contains target row indices set
-//   row_idx_new : Vector, target row new indices in pair_idx FUSP
+//   pair_idx    : Vector, SSP indices that contains target row indices set
+//   row_idx_new : Vector, target row new indices in pair_idx SSP
 void H2ERI_extract_shell_pair_idx(
     const multi_sp_t *sp, H2P_int_vec_t row_idx,
     H2P_int_vec_t sp_idx,   H2P_int_vec_t work_buf,
@@ -487,21 +487,22 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         #pragma omp parallel num_threads(n_thread_i)
         {
             int tid = omp_get_thread_num();
-            H2P_thread_buf_t thread_buf = h2pack->tb[tid];
-            H2P_int_vec_t   pair_idx    = thread_buf->idx0;
-            H2P_int_vec_t   row_idx     = thread_buf->idx1;
-            H2P_int_vec_t   node_ff_idx = thread_buf->idx2;
-            H2P_int_vec_t   ID_buff     = thread_buf->idx2;
-            H2P_int_vec_t   sub_idx     = thread_buf->idx3;
-            H2P_int_vec_t   sub_row_idx = thread_buf->idx2;
-            H2P_int_vec_t   work_buf    = thread_buf->idx3;
-            H2P_int_vec_t   sub_pair    = thread_buf->idx4;
-            H2P_dense_mat_t pp          = thread_buf->mat0;
-            H2P_dense_mat_t A_ff_pp     = thread_buf->mat1;
-            H2P_dense_mat_t randn_mat   = thread_buf->mat0; 
-            H2P_dense_mat_t A_block     = thread_buf->mat2;
-            H2P_dense_mat_t QR_buff     = thread_buf->mat0;  
-            simint_buff_t   simint_buff = h2eri->simint_buffs[tid];
+            H2P_thread_buf_t thread_buf     = h2pack->tb[tid];
+            H2P_int_vec_t    pair_idx       = thread_buf->idx0;
+            H2P_int_vec_t    row_idx        = thread_buf->idx1;
+            H2P_int_vec_t    node_ff_idx    = thread_buf->idx2;
+            H2P_int_vec_t    ID_buff        = thread_buf->idx2;
+            H2P_int_vec_t    sub_idx        = thread_buf->idx3;
+            H2P_int_vec_t    sub_row_idx    = thread_buf->idx2;
+            H2P_int_vec_t    work_buf       = thread_buf->idx3;
+            H2P_int_vec_t    sub_pair       = thread_buf->idx4;
+            H2P_dense_mat_t  pp             = thread_buf->mat0;
+            H2P_dense_mat_t  A_ff_pp        = thread_buf->mat1;
+            H2P_dense_mat_t  randn_mat      = thread_buf->mat0; 
+            H2P_dense_mat_t  A_block        = thread_buf->mat2;
+            H2P_dense_mat_t  QR_buff        = thread_buf->mat0;  
+            simint_buff_t    simint_buff    = h2eri->simint_buffs[tid];
+            eri_batch_buff_t eri_batch_buff = h2eri->eri_batch_buffs[tid];
             double *timers = U_timers + 8 * tid;
             double st, et;
             
@@ -604,7 +605,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 st = H2P_get_wtime_sec();
                 H2ERI_calc_ERI_pairs_to_mat(
                     sp, pair_idx->length, node_ff_idx->length, pair_idx->data, 
-                    node_ff_idx->data, simint_buff, A_ff, A_ff_ncol
+                    node_ff_idx->data, simint_buff, A_ff, A_ff_ncol, eri_batch_buff
                 );
                 et = H2P_get_wtime_sec();
                 timers[0] += et - st;
@@ -679,7 +680,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         }  // End of "#pragma omp parallel"
         
         #ifdef PROFILING_OUTPUT
-        double max_t = 0.0, avg_t = 0.0, min_t = 1145141919.0;
+        double max_t = 0.0, avg_t = 0.0, min_t = 19241112.0;
         for (int i = 0; i < n_thread_i; i++)
         {
             double thread_i_timer = h2pack->tb[i]->timer;
@@ -825,7 +826,7 @@ void H2ERI_build_B(H2ERI_t h2eri)
         B_total_size += Bi_size;
         B_ptr[i + 1] = Bi_size;
         // Add statistic info
-        h2pack->mat_size[4] += 2 * (B_nrow[i] * B_ncol[i]);
+        h2pack->mat_size[4] += (B_nrow[i] * B_ncol[i]);
         h2pack->mat_size[4] += 2 * (B_nrow[i] + B_ncol[i]);
     }
     int BD_ntask_thread = (h2pack->BD_JIT == 1) ? BD_NTASK_THREAD : 1;
@@ -842,7 +843,8 @@ void H2ERI_build_B(H2ERI_t h2eri)
     {
         int tid = omp_get_thread_num();
         H2P_dense_mat_t tmpB = h2pack->tb[tid]->mat0;
-        simint_buff_t buff = h2eri->simint_buffs[tid];
+        simint_buff_t simint_buff = h2eri->simint_buffs[tid];
+        eri_batch_buff_t eri_batch_buff = h2eri->eri_batch_buffs[tid];
         
         h2pack->tb[tid]->timer = -H2P_get_wtime_sec();
         #pragma omp for schedule(dynamic) nowait
@@ -868,8 +870,8 @@ void H2ERI_build_B(H2ERI_t h2eri)
                     int *ket_idx   = J_pair[node1]->data;
                     H2P_dense_mat_resize(tmpB, tmpB_nrow, tmpB_ncol);
                     H2ERI_calc_ERI_pairs_to_mat(
-                        sp, n_bra_pair, n_ket_pair, 
-                        bra_idx, ket_idx, buff, tmpB->data, tmpB->ncol
+                        sp, n_bra_pair, n_ket_pair, bra_idx, ket_idx, 
+                        simint_buff, tmpB->data, tmpB->ncol, eri_batch_buff
                     );
                     H2P_dense_mat_select_rows   (tmpB, J_row[node0]);
                     H2P_dense_mat_select_columns(tmpB, J_row[node1]);
@@ -889,8 +891,8 @@ void H2ERI_build_B(H2ERI_t h2eri)
                     int *ket_idx   = index_seq + pt_s1;
                     H2P_dense_mat_resize(tmpB, tmpB_nrow, tmpB_ncol);
                     H2ERI_calc_ERI_pairs_to_mat(
-                        sp, n_bra_pair, n_ket_pair, 
-                        bra_idx, ket_idx, buff, tmpB->data, tmpB->ncol
+                        sp, n_bra_pair, n_ket_pair, bra_idx, ket_idx, 
+                        simint_buff, tmpB->data, tmpB->ncol, eri_batch_buff
                     );
                     H2P_dense_mat_select_rows(tmpB, J_row[node0]);
                 }
@@ -909,8 +911,8 @@ void H2ERI_build_B(H2ERI_t h2eri)
                     int *ket_idx   = J_pair[node1]->data;
                     H2P_dense_mat_resize(tmpB, tmpB_nrow, tmpB_ncol);
                     H2ERI_calc_ERI_pairs_to_mat(
-                        sp, n_bra_pair, n_ket_pair, 
-                        bra_idx, ket_idx, buff, tmpB->data, tmpB->ncol
+                        sp, n_bra_pair, n_ket_pair, bra_idx, ket_idx, 
+                        simint_buff, tmpB->data, tmpB->ncol, eri_batch_buff
                     );
                     H2P_dense_mat_select_columns(tmpB, J_row[node1]);
                 }
@@ -922,7 +924,7 @@ void H2ERI_build_B(H2ERI_t h2eri)
     }  // End of "pragma omp parallel"
 
     #ifdef PROFILING_OUTPUT
-    double max_t = 0.0, avg_t = 0.0, min_t = 1145141919.0;
+    double max_t = 0.0, avg_t = 0.0, min_t = 19241112.0;
     for (int i = 0; i < n_thread; i++)
     {
         double thread_i_timer = h2pack->tb[i]->timer;
@@ -1007,7 +1009,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
         D_ptr[n_leaf_node + 1 + i] = Di_size;
         D1_total_size += Di_size;
         // Add statistic info
-        h2pack->mat_size[6] += 2 * (node0_nbfp * node1_nbfp);
+        h2pack->mat_size[6] += (node0_nbfp * node1_nbfp);
         h2pack->mat_size[6] += 2 * (node0_nbfp + node1_nbfp);
     }
     H2P_partition_workload(n_r_inadm_pair, D_ptr + n_leaf_node + 1, D1_total_size, n_thread * BD_ntask_thread, D_blk1);
@@ -1022,7 +1024,8 @@ void H2ERI_build_D(H2ERI_t h2eri)
     #pragma omp parallel num_threads(n_thread)
     {
         int tid = omp_get_thread_num();
-        simint_buff_t buff = h2eri->simint_buffs[tid];
+        simint_buff_t simint_buff = h2eri->simint_buffs[tid];
+        eri_batch_buff_t eri_batch_buff = h2eri->eri_batch_buffs[tid];
         
         h2pack->tb[tid]->timer = -H2P_get_wtime_sec();
         
@@ -1043,8 +1046,8 @@ void H2ERI_build_D(H2ERI_t h2eri)
                 int *bra_idx = index_seq + pt_s;
                 int *ket_idx = bra_idx;
                 H2ERI_calc_ERI_pairs_to_mat(
-                    sp, node_npts, node_npts, 
-                    bra_idx, ket_idx, buff, Di, ld_Di
+                    sp, node_npts, node_npts, bra_idx, ket_idx, 
+                    simint_buff, Di, ld_Di, eri_batch_buff
                 );
             }
         }  // End of i_blk0 loop
@@ -1070,8 +1073,8 @@ void H2ERI_build_D(H2ERI_t h2eri)
                 int *bra_idx = index_seq + pt_s0;
                 int *ket_idx = index_seq + pt_s1;
                 H2ERI_calc_ERI_pairs_to_mat(
-                    sp, node0_npts, node1_npts, 
-                    bra_idx, ket_idx, buff, Di, ld_Di
+                    sp, node0_npts, node1_npts, bra_idx, ket_idx, 
+                    simint_buff, Di, ld_Di, eri_batch_buff
                 );
             }
         }  // End of i_blk1 loop
@@ -1085,7 +1088,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
     //printf("Save D results to file done\n");
     
     #ifdef PROFILING_OUTPUT
-    double max_t = 0.0, avg_t = 0.0, min_t = 1145141919.0;
+    double max_t = 0.0, avg_t = 0.0, min_t = 19241112.0;
     for (int i = 0; i < n_thread; i++)
     {
         double thread_i_timer = h2pack->tb[i]->timer;
