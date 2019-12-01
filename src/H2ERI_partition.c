@@ -79,8 +79,8 @@ void H2ERI_partition_sp_centers(H2ERI_t h2eri, int max_leaf_points, double max_l
     h2eri->sp_extent    = sp_extent_new;
     h2eri->sp_shell_idx = sp_shell_idx_new;
     
-    // 3. Initialize FUSP. Note that Simint MATLAB code uses (NM|QP) instead of
-    // the normal (MN|PQ) order for ERI. We follow this for the moment.
+    // 3. Initialize shell pairs. Note that Simint MATLAB code uses (NM|QP) instead
+    // of the normal (MN|PQ) order for ERI. We follow this for the moment.
     h2eri->sp    = (multi_sp_t *) malloc(sizeof(multi_sp_t) * num_sp);
     h2eri->index_seq = (int *)        malloc(sizeof(int)        * num_sp);
     assert(h2eri->sp != NULL && h2eri->index_seq != NULL);

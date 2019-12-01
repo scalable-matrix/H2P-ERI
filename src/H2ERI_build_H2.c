@@ -109,13 +109,13 @@ void H2ERI_generate_proxy_point_layers(
 //   1. Are admissible from i-th node;
 //   2. Their extents overlap with i-th node's near field boxes (super cell).
 // Input parameters:
-//   h2eri->h2pack        : H2 tree partitioning info
-//   h2eri->num_sp    : Number of fully uncontracted shell pairs (FUSP)
-//   h2eri->sp_center : Array, size 3 * num_sp, centers of FUSP, sorted
-//   h2eri->sp_extent : Array, size num_sp, extents of FUSP, sorted
+//   h2eri->h2pack    : H2 tree partitioning info
+//   h2eri->num_sp    : Number of screened shell pairs (SSP)
+//   h2eri->sp_center : Array, size 3 * num_sp, centers of SSP, sorted
+//   h2eri->sp_extent : Array, size num_sp, extents of SSP, sorted
 // Output parameters:
 //   h2eri->ovlp_ff_idx : Array, size h2pack->n_node, i-th vector contains
-//                        FUSP indices that satisfy the requirements.
+//                        SSP indices that satisfy the requirements.
 void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri)
 {
     H2Pack_t h2pack = h2eri->h2pack;
@@ -266,13 +266,13 @@ void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri)
 // Extract shell pair and row indices of a target row index set from
 // a given set of FISP
 // Input parameters:
-//   sp   : Array, size num_sp, FUSP
+//   sp   : Array, size num_sp, SSP
 //   row_idx  : Vector, target row indices set
-//   sp_idx   : Vector, given FUSP set 
+//   sp_idx   : Vector, given SSP set 
 //   work_buf : Vector, work buffer
 // Output parameters:
-//   pair_idx    : Vector, FUSP indices that contains target row indices set
-//   row_idx_new : Vector, target row new indices in pair_idx FUSP
+//   pair_idx    : Vector, SSP indices that contains target row indices set
+//   row_idx_new : Vector, target row new indices in pair_idx SSP
 void H2ERI_extract_shell_pair_idx(
     const multi_sp_t *sp, H2P_int_vec_t row_idx,
     H2P_int_vec_t sp_idx,   H2P_int_vec_t work_buf,
@@ -680,7 +680,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         }  // End of "#pragma omp parallel"
         
         #ifdef PROFILING_OUTPUT
-        double max_t = 0.0, avg_t = 0.0, min_t = 1145141919.0;
+        double max_t = 0.0, avg_t = 0.0, min_t = 19241112.0;
         for (int i = 0; i < n_thread_i; i++)
         {
             double thread_i_timer = h2pack->tb[i]->timer;
@@ -826,7 +826,7 @@ void H2ERI_build_B(H2ERI_t h2eri)
         B_total_size += Bi_size;
         B_ptr[i + 1] = Bi_size;
         // Add statistic info
-        h2pack->mat_size[4] += 2 * (B_nrow[i] * B_ncol[i]);
+        h2pack->mat_size[4] += (B_nrow[i] * B_ncol[i]);
         h2pack->mat_size[4] += 2 * (B_nrow[i] + B_ncol[i]);
     }
     int BD_ntask_thread = (h2pack->BD_JIT == 1) ? BD_NTASK_THREAD : 1;
@@ -924,7 +924,7 @@ void H2ERI_build_B(H2ERI_t h2eri)
     }  // End of "pragma omp parallel"
 
     #ifdef PROFILING_OUTPUT
-    double max_t = 0.0, avg_t = 0.0, min_t = 1145141919.0;
+    double max_t = 0.0, avg_t = 0.0, min_t = 19241112.0;
     for (int i = 0; i < n_thread; i++)
     {
         double thread_i_timer = h2pack->tb[i]->timer;
@@ -1009,7 +1009,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
         D_ptr[n_leaf_node + 1 + i] = Di_size;
         D1_total_size += Di_size;
         // Add statistic info
-        h2pack->mat_size[6] += 2 * (node0_nbfp * node1_nbfp);
+        h2pack->mat_size[6] += (node0_nbfp * node1_nbfp);
         h2pack->mat_size[6] += 2 * (node0_nbfp + node1_nbfp);
     }
     H2P_partition_workload(n_r_inadm_pair, D_ptr + n_leaf_node + 1, D1_total_size, n_thread * BD_ntask_thread, D_blk1);
@@ -1088,7 +1088,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
     //printf("Save D results to file done\n");
     
     #ifdef PROFILING_OUTPUT
-    double max_t = 0.0, avg_t = 0.0, min_t = 1145141919.0;
+    double max_t = 0.0, avg_t = 0.0, min_t = 19241112.0;
     for (int i = 0; i < n_thread; i++)
     {
         double thread_i_timer = h2pack->tb[i]->timer;

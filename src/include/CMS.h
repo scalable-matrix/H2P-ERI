@@ -137,7 +137,7 @@ void CMS_calc_ERI_batch(
 // (M_i N_i|P_j Q_j) just to follow the output of calculate_eri_pair.c
 // file in simint-matlab. TODO: check if we can use (M_i N_i|P_j Q_j).
 // Input parameters:
-//   sp             : Array, size num_sp, FUSP
+//   sp             : Array, size num_sp, screened shell pairs (SSP)
 //   n_bra_pair     : Number of bra-side shell pairs (N_i M_i|
 //   n_ket_pair     : Number of ket-side shell pairs |Q_j P_j)
 //   bra_idx        : Array, size n_bra_pair, indices of (N_i M_i| pairs
@@ -166,7 +166,7 @@ void H2ERI_calc_ERI_pairs_to_mat(
 // TODO: check if we can use (M_i N_i|[x_j, y_j, z_j]) later.
 // Input parameters:
 //   sp_shells  : Array, size 2 * num_sp, each column is a shell pair
-//   num_sp     : Total number of shell pairs
+//   num_sp     : Total number of SSP
 //   n_bra_pair : Number of shell pairs (N_i M_i|
 //   sp_idx     : Array, size n_bra_pair, shell pair indices
 //   n_point    : Number of point charge
