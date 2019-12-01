@@ -137,19 +137,20 @@ void CMS_calc_ERI_batch(
 // (M_i N_i|P_j Q_j) just to follow the output of calculate_eri_pair.c
 // file in simint-matlab. TODO: check if we can use (M_i N_i|P_j Q_j).
 // Input parameters:
-//   unc_sp     : Array, size num_unc_sp, FUSP
-//   n_bra_pair : Number of bra-side shell pairs (N_i M_i|
-//   n_ket_pair : Number of ket-side shell pairs |Q_j P_j)
-//   bra_idx    : Array, size n_bra_pair, indices of (N_i M_i| pairs
-//   ket_idx    : Array, size n_ket_pair, indices of |Q_j P_j) pairs
-//   buff       : Initialized Simint buffer stricture
-//   ldm        : Leading dimension of output matrix, should >=
-//                total number of ket-side shell pairs' basis function pairs
+//   sp             : Array, size num_sp, FUSP
+//   n_bra_pair     : Number of bra-side shell pairs (N_i M_i|
+//   n_ket_pair     : Number of ket-side shell pairs |Q_j P_j)
+//   bra_idx        : Array, size n_bra_pair, indices of (N_i M_i| pairs
+//   ket_idx        : Array, size n_ket_pair, indices of |Q_j P_j) pairs
+//   simint_buff    : Initialized Simint buffer structure
+//   ldm            : Leading dimension of output matrix, should >=
+//                    total number of ket-side shell pairs' basis function pairs
+//   eri_batch_buff : Initialized ERI batching buffer structure
 // Output parameter:
 //   mat : Matrix with unfolded shell quartets ERI results, size >= ldm *
 //         total number of bra-side shell pairs' basis function pairs
 void H2ERI_calc_ERI_pairs_to_mat(
-    const multi_sp_p unc_sp, const int n_bra_pair, const int n_ket_pair,
+    const multi_sp_p sp, const int n_bra_pair, const int n_ket_pair,
     const int *bra_idx, const int *ket_idx, simint_buff_t simint_buff, 
     double *mat, const int ldm, eri_batch_buff_t eri_batch_buff
 );
@@ -164,19 +165,19 @@ void H2ERI_calc_ERI_pairs_to_mat(
 // function is the transpose of calculate_nai_block.m's output. 
 // TODO: check if we can use (M_i N_i|[x_j, y_j, z_j]) later.
 // Input parameters:
-//   unc_sp_shells : Array, size 2 * num_sp, each column is a FUSP
-//   num_unc_sp    : Number of FUSP
-//   num_sp        : Number of shell pairs (N_i M_i|
-//   sp_idx        : Array, size num_sp, FUSP indices
-//   n_point       : Number of point charge
-//   x, y, z       : Array, size of n_point, point charge coordinates
-//   ldm           : Leading dimension of output matrix, should >= 
-//                   total number of all shell pairs' basis function pairs
+//   sp_shells  : Array, size 2 * num_sp, each column is a shell pair
+//   num_sp     : Total number of shell pairs
+//   n_bra_pair : Number of shell pairs (N_i M_i|
+//   sp_idx     : Array, size n_bra_pair, shell pair indices
+//   n_point    : Number of point charge
+//   x, y, z    : Array, size of n_point, point charge coordinates
+//   ldm        : Leading dimension of output matrix, should >= 
+//                total number of all shell pairs' basis function pairs
 // Output parameter:
 //   mat : Matrix with unfolded NAI pairs results, size >= ldm * n_point
 void H2ERI_calc_NAI_pairs_to_mat(
-    const shell_t *unc_sp_shells, const int num_unc_sp,
-    const int num_sp, const int *sp_idx, const int n_point,
+    const shell_t *sp_shells, const int num_sp,
+    const int n_bra_pair, const int *sp_idx, const int n_point,
     double *x, double *y, double *z, double *mat, const int ldm
 );
 
