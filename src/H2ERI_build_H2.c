@@ -474,6 +474,11 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
     size_t U_timers_msize = sizeof(double) * n_thread * 8;
     double *U_timers = (double *) H2P_malloc_aligned(U_timers_msize);
     
+    const int num_randn = 10000000;
+    double *randn_buff = (double*) malloc(sizeof(double) * num_randn);
+    assert(randn_buff != NULL);
+    H2ERI_generate_normal_distribution(0.0, 1.0, num_randn, randn_buff);
+    
     // 3. Hierarchical construction level by level
     for (int i = max_level; i >= min_adm_level; i--)
     {
@@ -625,7 +630,12 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 H2P_dense_mat_resize(randn_mat, 1, randn_size);
                 H2P_dense_mat_resize(A_block, A_blk_nrow, A_blk_ncol);
                 st = H2P_get_wtime_sec();
-                H2ERI_generate_normal_distribution(0.0, 1.0, randn_size, randn_mat->data);
+                //H2ERI_generate_normal_distribution(0.0, 1.0, randn_size, randn_mat->data);
+                for (int offset = 0; offset < randn_size; offset += num_randn)
+                {
+                    int copy_size = (num_randn < randn_size - offset) ? num_randn : (randn_size - offset);
+                    memcpy(randn_mat->data + offset, randn_buff, sizeof(double) * copy_size);
+                }
                 et = H2P_get_wtime_sec();
                 timers[2] += et - st;
                 double *randn_pp = randn_mat->data;
@@ -744,6 +754,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         //printf("%4d, %4d\n", U[i]->nrow, U[i]->ncol);
     }
 
+    free(randn_buff);
     free(skel_flag);
     free(lvl_leaf);
     free(lvl_n_leaf);
