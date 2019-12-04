@@ -393,6 +393,77 @@ int H2ERI_gather_sum(const int *arr, H2P_int_vec_t idx)
     return res;
 }
 
+// Calculate y := x * A, where A is a random sparse matrix that has
+// RAND_NNZ_COL random nonzeros in each column with random position, 
+// x and y are row-major matrices.
+// Input parameters:
+//   m, n, k  : x is m-by-k matrix, A is k-by-n sparse matrix
+//   A_valbuf : Buffer for storing nonzeros of A
+//   A_idxbuf : Buffer for storing nonzero indices of A
+//   x, ldx   : m-by-k row-major dense matrix, leading dimension ldx
+//   ldy      : Leading dimension of y
+// Output parameters:
+//   y        : m-by-n row-major dense matrix, leading dimension ldy
+#define RAND_NNZ_COL 16
+void H2ERI_rand_sparse_mm(
+    const int m, const int n, const int k,
+    H2P_dense_mat_t A_valbuf, H2P_int_vec_t A_idxbuf,
+    double *x, const int ldx, double *y, const int ldy
+)
+{
+    // Note: we calculate y^T := A^T * x^T. Since x/y is row-major, 
+    // each of its row is a column of x^T/y^T. We can just use SpMV
+    // to calculate y^T(:, i) := A^T * x^T(:, i). 
+    
+    // 1. Generate random sparse matrix A^T, store in CSR format
+    int nnz = n * RAND_NNZ_COL;
+    H2P_dense_mat_resize(A_valbuf, 1, nnz);
+    H2P_int_vec_set_capacity(A_idxbuf, (n + 1) + nnz + k);
+    double *val = A_valbuf->data;
+    int *row_ptr = A_idxbuf->data;
+    int *col_idx = row_ptr + (n + 1);
+    int *flag = col_idx + nnz; 
+    memset(flag, 0, sizeof(int) * k);
+    for (int i = 0; i < nnz; i++) 
+        val[i] = 2.0 * (rand() & 1) - 1.0;
+    for (int i = 0; i <= n; i++) 
+        row_ptr[i] = i * RAND_NNZ_COL;
+    for (int i = 0; i < n; i++)
+    {
+        int cnt = 0;
+        int *row_i_cols = col_idx + i * RAND_NNZ_COL;
+        while (cnt < RAND_NNZ_COL)
+        {
+            int col = rand() % k;
+            if (flag[col] == 0) 
+            {
+                flag[col] = 1;
+                row_i_cols[cnt] = col;
+                cnt++;
+            }
+        }
+        for (int j = 0; j < RAND_NNZ_COL; j++)
+            flag[row_i_cols[j]] = 0;
+    }
+    
+    // 2. Do m times CSR SpMV
+    for (int i = 0; i < m; i++)
+    {
+        double *x_i = x + i * ldx;
+        double *y_i = y + i * ldy;
+        
+        for (int j = 0; j < n; j++)
+        {
+            double res = 0.0;
+            int spos = RAND_NNZ_COL * j;
+            #pragma omp simd
+            for (int l = spos; l < spos + RAND_NNZ_COL; l++)
+                res += val[l] * x_i[col_idx[l]];
+            y_i[j] = res;
+        }
+    }
+}
+
 // Build H2 projection matrices using proxy points
 // Input parameter:
 //   h2eri : H2ERI structure with point partitioning & shell pair info
@@ -474,11 +545,6 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
     size_t U_timers_msize = sizeof(double) * n_thread * 8;
     double *U_timers = (double *) H2P_malloc_aligned(U_timers_msize);
     
-    const int num_randn = 10000000;
-    double *randn_buff = (double*) malloc(sizeof(double) * num_randn);
-    assert(randn_buff != NULL);
-    H2ERI_generate_normal_distribution(0.0, 1.0, num_randn, randn_buff);
-    
     // 3. Hierarchical construction level by level
     for (int i = max_level; i >= min_adm_level; i--)
     {
@@ -498,14 +564,15 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
             H2P_int_vec_t    node_ff_idx    = thread_buf->idx2;
             H2P_int_vec_t    ID_buff        = thread_buf->idx2;
             H2P_int_vec_t    sub_idx        = thread_buf->idx3;
+            H2P_int_vec_t    randmm_Aidx    = thread_buf->idx4;
             H2P_int_vec_t    sub_row_idx    = thread_buf->idx2;
             H2P_int_vec_t    work_buf       = thread_buf->idx3;
             H2P_int_vec_t    sub_pair       = thread_buf->idx4;
             H2P_dense_mat_t  pp             = thread_buf->mat0;
             H2P_dense_mat_t  A_ff_pp        = thread_buf->mat1;
-            H2P_dense_mat_t  randn_mat      = thread_buf->mat0; 
             H2P_dense_mat_t  A_block        = thread_buf->mat2;
-            H2P_dense_mat_t  QR_buff        = thread_buf->mat0;  
+            H2P_dense_mat_t  randmm_Aval    = thread_buf->mat0;
+            H2P_dense_mat_t  QR_buff        = thread_buf->mat0;
             simint_buff_t    simint_buff    = h2eri->simint_buffs[tid];
             eri_batch_buff_t eri_batch_buff = h2eri->eri_batch_buffs[tid];
             double *timers = U_timers + 8 * tid;
@@ -624,44 +691,27 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 timers[1] += et - st;
                 
                 // (5) Randomized normalization for NAI and ERI blocks
-                // randn_pp: A_pp_ncol-by-A_blk_nrow
-                // randn_ff: A_ff_ncol-by-A_blk_nrow
-                int randn_size = (A_pp_ncol + A_ff_ncol) * A_blk_nrow;
-                int A_blk_ncol = 2 * A_blk_nrow;
-                H2P_dense_mat_resize(randn_mat, 1, randn_size);
-                H2P_dense_mat_resize(A_block, A_blk_nrow, A_blk_ncol);
                 st = H2P_get_wtime_sec();
-                //H2ERI_generate_normal_distribution(0.0, 1.0, randn_size, randn_mat->data);
-                for (int offset = 0; offset < randn_size; offset += num_randn)
-                {
-                    int copy_size = (num_randn < randn_size - offset) ? num_randn : (randn_size - offset);
-                    memcpy(randn_mat->data + offset, randn_buff, sizeof(double) * copy_size);
-                }
-                et = H2P_get_wtime_sec();
-                timers[2] += et - st;
-                double *randn_pp = randn_mat->data;
-                double *randn_ff = randn_mat->data + A_pp_ncol * A_blk_nrow;
+                int A_blk_ncol = 2 * A_blk_nrow;
+                H2P_dense_mat_resize(A_block, A_blk_nrow, A_blk_ncol);
                 double *A_blk_pp = A_block->data;
                 double *A_blk_ff = A_block->data + A_blk_nrow;
-                st = H2P_get_wtime_sec();
-                CBLAS_GEMM(
-                    CblasRowMajor, CblasNoTrans, CblasNoTrans, 
+                H2ERI_rand_sparse_mm(
                     A_blk_nrow, A_blk_nrow, A_pp_ncol,
-                    1.0, A_pp, A_pp_ncol, randn_pp, A_blk_nrow,
-                    0.0, A_blk_pp, A_blk_ncol
+                    randmm_Aval, randmm_Aidx, 
+                    A_pp, A_pp_ncol, A_blk_pp, A_blk_ncol
                 );
-                CBLAS_GEMM(
-                    CblasRowMajor, CblasNoTrans, CblasNoTrans, 
+                H2ERI_rand_sparse_mm(
                     A_blk_nrow, A_blk_nrow, A_ff_ncol,
-                    1.0, A_ff, A_ff_ncol, randn_ff, A_blk_nrow,
-                    0.0, A_blk_ff, A_blk_ncol
+                    randmm_Aval, randmm_Aidx, 
+                    A_ff, A_ff_ncol, A_blk_ff, A_blk_ncol
                 );
                 et = H2P_get_wtime_sec();
                 timers[3] += et - st;
                 
                 // (6) ID compression
                 st = H2P_get_wtime_sec();
-                H2P_dense_mat_normalize_columns(A_block, randn_mat);
+                H2P_dense_mat_normalize_columns(A_block, randmm_Aval);
                 H2P_dense_mat_select_rows(A_block, row_idx);
                 H2P_dense_mat_resize(QR_buff, 1, 2 * A_block->nrow);
                 H2P_int_vec_set_capacity(ID_buff, 4 * A_block->nrow);
@@ -702,13 +752,13 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         printf("[PROFILING] Build U: level %d, %d/%d threads, %d nodes, ", i, n_thread_i, n_thread, level_i_n_node);
         printf("min/avg/max thread wall-time = %.3lf, %.3lf, %.3lf (s)\n", min_t, avg_t, max_t);
         printf("[PROFILING] Build U subroutine time consumption:\n");
-        printf("tid, calc ERI, calc NAI, randn mat, DGEMM, ID compress, misc., total\n");
+        printf("tid, calc ERI, calc NAI, SpMM, ID compress, misc., total\n");
         for (int tid = 0; tid < n_thread_i; tid++)
         {
             double *timers = U_timers + 8 * tid;
             printf(
-                "%3d, %6.3lf, %6.3lf, %6.3lf, %6.3lf, %6.3lf, %6.3lf, %6.3lf\n",
-                tid, timers[0], timers[1], timers[2], timers[3], timers[4], timers[5], h2pack->tb[tid]->timer
+                "%3d, %6.3lf, %6.3lf, %6.3lf, %6.3lf, %6.3lf, %6.3lf\n",
+                tid, timers[0], timers[1], timers[3], timers[4], timers[5], h2pack->tb[tid]->timer
             );
         }
         #endif
@@ -754,7 +804,6 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         //printf("%4d, %4d\n", U[i]->nrow, U[i]->ncol);
     }
 
-    free(randn_buff);
     free(skel_flag);
     free(lvl_leaf);
     free(lvl_n_leaf);
