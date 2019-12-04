@@ -157,8 +157,8 @@ void H2ERI_calc_ERI_pairs_to_mat(
 
 // Calculate NAI pairs (N_i M_i|[x_j, y_j, z_j]) and unfold all NAI 
 // results to form a matrix.
-// Each NAI result (N_i M_i|[x_j, y_j, z_j]) will be unfold as a 1-by-
-// (NCART(N_i)*NCART(M_i)) row vector and place at the j-th row i-th 
+// Each NAI result (N_i M_i|[x_j, y_j, z_j]) will be unfold as a
+// (NCART(N_i)*NCART(M_i))-by-1 column vector and place at the i-th row j-th 
 // column block. For the moment, we use (N_i M_i|[x_j, y_j, z_j]) instead
 // of (M_i N_i|[x_j, y_j, z_j]) just to follow the output of the file
 // calculate_nai_block.m in simint-matlab. Note that the output of this 
@@ -171,14 +171,14 @@ void H2ERI_calc_ERI_pairs_to_mat(
 //   sp_idx     : Array, size n_bra_pair, shell pair indices
 //   n_point    : Number of point charge
 //   x, y, z    : Array, size of n_point, point charge coordinates
-//   ldm        : Leading dimension of output matrix, should >= 
-//                total number of all shell pairs' basis function pairs
+//   ldm        : Leading dimension of output matrix, >= n_point
+//   trans_buf  : Buffer, size >= total number of all shell pairs' basis function pairs
 // Output parameter:
-//   mat : Matrix with unfolded NAI pairs results, size >= ldm * n_point
+//   mat : Matrix with unfolded NAI pairs results
 void H2ERI_calc_NAI_pairs_to_mat(
-    const shell_t *sp_shells, const int num_sp,
-    const int n_bra_pair, const int *sp_idx, const int n_point,
-    double *x, double *y, double *z, double *mat, const int ldm
+    const shell_t *sp_shells, const int num_sp, const int n_bra_pair, 
+    const int *sp_idx, const int n_point, double *x, double *y, double *z, 
+    double *mat, const int ldm, double *trans_buf
 );
 
 #endif

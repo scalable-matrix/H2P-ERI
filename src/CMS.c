@@ -446,13 +446,13 @@ void H2ERI_calc_ERI_pairs_to_mat(
 // Calculate NAI pairs (N_i M_i|[x_j, y_j, z_j]) and unfold all NAI 
 // results to form a matrix
 void H2ERI_calc_NAI_pairs_to_mat(
-    const shell_t *sp_shells, const int num_sp,
-    const int n_bra_pair, const int *sp_idx, const int n_point,
-    double *x, double *y, double *z, double *mat, const int ldm
+    const shell_t *sp_shells, const int num_sp, const int n_bra_pair, 
+    const int *sp_idx, const int n_point, double *x, double *y, double *z, 
+    double *mat, const int ldm, double *trans_buf
 )
 {
     double atomic_nums = 1.0;
-    int col_idx = 0;
+    int row_idx = 0;
     for (int j = 0; j < n_bra_pair; j++)
     {
         const shell_t *M_shell = sp_shells + sp_idx[j];
@@ -462,12 +462,14 @@ void H2ERI_calc_NAI_pairs_to_mat(
         int ncart_MN = NCART(am_M) * NCART(am_N);
         for (int i = 0; i < n_point; i++)
         {
-            double *mat_blk = mat + i * ldm + col_idx;
             int ret = simint_compute_potential(
                 1, &atomic_nums, x + i, y + i, z + i,
-                N_shell, M_shell, mat_blk
+                N_shell, M_shell, trans_buf
             );
+            double *mat_blk = mat + row_idx * ldm + i;
+            for (int k = 0; k < ncart_MN; k++)
+                mat_blk[k * ldm] = trans_buf[k];
         }
-        col_idx += ncart_MN;
+        row_idx += ncart_MN;
     }
 }

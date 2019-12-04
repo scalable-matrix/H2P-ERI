@@ -600,13 +600,14 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 
                 // (4) Construct NAI and ERI blocks
                 // A_ff : A_blk_nrow-by-A_ff_ncol
-                // A_pp : A_pp_ncol-by-A_blk_nrow, need to be transposed in gemm
+                // A_pp : A_blk_nrow-by-A_pp_ncol
                 int A_blk_nrow = H2ERI_gather_sum(sp_nbfp, pair_idx);
                 int A_ff_ncol  = H2ERI_gather_sum(sp_nbfp, node_ff_idx);
                 int A_pp_ncol  = num_pp;
-                H2P_dense_mat_resize(A_ff_pp, A_blk_nrow, A_ff_ncol + A_pp_ncol);
+                H2P_dense_mat_resize(A_ff_pp, A_blk_nrow, A_ff_ncol + A_pp_ncol + 1);
                 double *A_ff = A_ff_pp->data;
-                double *A_pp = A_ff_pp->data + A_blk_nrow * A_ff_ncol;
+                double *A_pp = A_ff + A_blk_nrow * A_ff_ncol;
+                double *A_pp_buf = A_pp + A_blk_nrow * A_pp_ncol;
                 st = H2P_get_wtime_sec();
                 H2ERI_calc_ERI_pairs_to_mat(
                     sp, pair_idx->length, node_ff_idx->length, pair_idx->data, 
@@ -617,7 +618,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 st = H2P_get_wtime_sec();
                 H2ERI_calc_NAI_pairs_to_mat(
                     sp_shells, num_sp, pair_idx->length, pair_idx->data, 
-                    num_pp, pp_x, pp_y, pp_z, A_pp, A_blk_nrow
+                    num_pp, pp_x, pp_y, pp_z, A_pp, A_pp_ncol, A_pp_buf
                 );
                 et = H2P_get_wtime_sec();
                 timers[1] += et - st;
@@ -644,9 +645,9 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 double *A_blk_ff = A_block->data + A_blk_nrow;
                 st = H2P_get_wtime_sec();
                 CBLAS_GEMM(
-                    CblasRowMajor, CblasTrans, CblasNoTrans, 
+                    CblasRowMajor, CblasNoTrans, CblasNoTrans, 
                     A_blk_nrow, A_blk_nrow, A_pp_ncol,
-                    1.0, A_pp, A_blk_nrow, randn_pp, A_blk_nrow,
+                    1.0, A_pp, A_pp_ncol, randn_pp, A_blk_nrow,
                     0.0, A_blk_pp, A_blk_ncol
                 );
                 CBLAS_GEMM(
@@ -658,8 +659,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 et = H2P_get_wtime_sec();
                 timers[3] += et - st;
                 
-                
-                // (5) ID compression
+                // (6) ID compression
                 st = H2P_get_wtime_sec();
                 H2P_dense_mat_normalize_columns(A_block, randn_mat);
                 H2P_dense_mat_select_rows(A_block, row_idx);
