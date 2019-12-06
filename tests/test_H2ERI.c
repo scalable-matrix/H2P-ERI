@@ -18,7 +18,7 @@ int main(int argc, char **argv)
     // 2. Process input shells for H2 partitioning
     H2ERI_process_shells(h2eri);
     
-    // 3. H2 partition of uncontracted shell pair centers
+    // 3. H2 partition of screened shell pair centers
     H2ERI_partition(h2eri);
     
     // 4. Build H2 representation for ERI tensor

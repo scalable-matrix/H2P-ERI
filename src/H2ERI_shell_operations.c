@@ -54,12 +54,23 @@ void H2ERI_screen_shell_pairs(H2ERI_t h2eri)
         for (int j = i; j < nshell; j++)
         {
             if (src_vals_row[j] < scr_thres) continue;
-            simint_allocate_shell(shells[i].nprim, &sp_shells[cidx0]);
-            simint_allocate_shell(shells[j].nprim, &sp_shells[cidx1]);
-            simint_copy_shell(&shells[i], &sp_shells[cidx0]);
-            simint_copy_shell(&shells[j], &sp_shells[cidx1]);
-            sp_shell_idx[cidx0] = i;
-            sp_shell_idx[cidx1] = j;
+            // Later we will calculate (NM|QP) instead of (MN|PQ), so we want AM(M) < AM(N)
+            if (shells[i].am < shells[j].am)
+            {
+                simint_allocate_shell(shells[i].nprim, &sp_shells[cidx0]);
+                simint_allocate_shell(shells[j].nprim, &sp_shells[cidx1]);
+                simint_copy_shell(&shells[i], &sp_shells[cidx0]);
+                simint_copy_shell(&shells[j], &sp_shells[cidx1]);
+                sp_shell_idx[cidx0] = i;
+                sp_shell_idx[cidx1] = j;
+            } else {
+                simint_allocate_shell(shells[i].nprim, &sp_shells[cidx1]);
+                simint_allocate_shell(shells[j].nprim, &sp_shells[cidx0]);
+                simint_copy_shell(&shells[i], &sp_shells[cidx1]);
+                simint_copy_shell(&shells[j], &sp_shells[cidx0]);
+                sp_shell_idx[cidx1] = i;
+                sp_shell_idx[cidx0] = j;
+            }
             cidx0++;
             cidx1++;
         }

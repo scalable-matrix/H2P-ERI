@@ -8,7 +8,7 @@
 #include "H2ERI_typedef.h"
 #include "H2Pack_partition.h"
 
-// Partition uncontracted shell pair centers (as points) for H2 tree
+// Partition screened shell pair centers (as points) for H2 tree
 // Input parameters:
 //   h2eri->num_sp    : Number of screened shell pairs (SSP)
 //   h2eri->sp        : Array, size 2 * num_sp, SSP
@@ -24,7 +24,7 @@
 //   h2eri->sp_extent : Array, size num_sp, sorted extents of SSP
 void H2ERI_partition_sp_centers(H2ERI_t h2eri, int max_leaf_points, double max_leaf_size)
 {
-    // 1. Partition uncontracted shell pair centers
+    // 1. Partition screened shell pair centers
     int num_sp = h2eri->num_sp;
     double *sp_center = h2eri->sp_center;
     if (max_leaf_points <= 0)   max_leaf_points = 300;
@@ -34,8 +34,8 @@ void H2ERI_partition_sp_centers(H2ERI_t h2eri, int max_leaf_points, double max_l
     int num_sp_bfp = 0;
     for (int i = 0; i < num_sp; i++)
     {
-        int am0  = sp_shells[i].am;
-        int am1  = sp_shells[i + num_sp].am;
+        int am0 = sp_shells[i].am;
+        int am1 = sp_shells[i + num_sp].am;
         num_sp_bfp += NCART(am0) * NCART(am1);
     }
     h2eri->h2pack->krnl_mat_size = num_sp_bfp; 
@@ -46,7 +46,7 @@ void H2ERI_partition_sp_centers(H2ERI_t h2eri, int max_leaf_points, double max_l
     );
     memcpy(sp_center, h2eri->h2pack->coord, sizeof(double) * 3 * num_sp);
     
-    // 2. Permute the uncontracted shell pairs and their extents according to 
+    // 2. Permute the screened shell pairs and their extents according to 
     // the permutation of their center coordinate
     int *coord_idx = h2eri->h2pack->coord_idx;
     double  *sp_extent    = h2eri->sp_extent;
@@ -266,7 +266,7 @@ void H2ERI_calc_mat_cluster(H2ERI_t h2eri)
     }
 }
 
-// H2 partition of uncontracted shell pair centers
+// H2 partition of screened shell pair centers
 void H2ERI_partition(H2ERI_t h2eri)
 {
     H2ERI_partition_sp_centers(h2eri, 0, 0.0);
