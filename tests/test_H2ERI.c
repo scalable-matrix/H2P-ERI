@@ -41,7 +41,7 @@ int main(int argc, char **argv)
     h2eri->h2pack->n_matvec = 0;
     memset(h2eri->h2pack->timers + 4, 0, sizeof(double) * 5);
     for (int k = 0; k < 10; k++)
-         H2ERI_build_Coulomb(h2eri, D_mat, J_mat);
+        H2ERI_build_Coulomb(h2eri, D_mat, J_mat);
     
     // 7. Calculate the relative error
     double ref_l2 = 0.0, err_l2 = 0.0;
