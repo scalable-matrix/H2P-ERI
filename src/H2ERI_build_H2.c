@@ -810,6 +810,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
     H2P_free_aligned(U_timers);
     for (int i = 0; i < n_thread; i++)
         H2P_thread_buf_reset(h2pack->tb[i]);
+    BLAS_SET_NUM_THREADS(n_thread);
 }
 
 // Build H2 generator matrices

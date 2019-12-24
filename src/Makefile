@@ -8,7 +8,7 @@ SIMINT_DIR = /home/mkurisu/Workspace/simint/build-avx/install
 
 HOSTCC  = icc
 AR      = xiar rcs
-DEF     = -DUSE_MKL -mkl -DUSE_AVX
+DEF     = -DUSE_MKL -mkl
 INC     = -I./include -I$(SIMINT_DIR)/include
 CFLAGS  = $(INC) -Wall -g -std=gnu99 -O3 -qopenmp -xHost $(DEF)
 LDFLAGS = -O3 -xHost -qopenmp 

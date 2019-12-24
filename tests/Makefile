@@ -6,7 +6,7 @@ SIMINT_LIB = $(SIMINT_DIR)/lib/libsimint.a
 H2PERI_LIB = ../src/libH2PERI.a
 
 INC    = -I../src/include/ -I$(SIMINT_DIR)/include/
-CFLAGS = -std=gnu99 -Wall -g -qopenmp -O3 -xHost -mkl -DUSE_AVX
+CFLAGS = -std=gnu99 -Wall -g -qopenmp -O3 -xHost -mkl
 
 test_H2ERI = test_H2ERI.x
 
