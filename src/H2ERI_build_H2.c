@@ -404,7 +404,6 @@ int H2ERI_gather_sum(const int *arr, H2P_int_vec_t idx)
 //   ldy      : Leading dimension of y
 // Output parameters:
 //   y        : m-by-n row-major dense matrix, leading dimension ldy
-#define RAND_NNZ_COL 16
 void H2ERI_rand_sparse_mm(
     const int m, const int n, const int k,
     H2P_dense_mat_t A_valbuf, H2P_int_vec_t A_idxbuf,
@@ -414,7 +413,9 @@ void H2ERI_rand_sparse_mm(
     // Note: we calculate y^T := A^T * x^T. Since x/y is row-major, 
     // each of its row is a column of x^T/y^T. We can just use SpMV
     // to calculate y^T(:, i) := A^T * x^T(:, i). 
-    
+
+    int RAND_NNZ_COL = (16 <= k) ? 16 : k;
+
     // 1. Generate random sparse matrix A^T, store in CSR format
     int nnz = n * RAND_NNZ_COL;
     H2P_dense_mat_resize(A_valbuf, 1, nnz);
