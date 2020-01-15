@@ -8,9 +8,15 @@
 int main(int argc, char **argv)
 {
     simint_init();
+
+    if (argc < 5)
+    {
+        printf("Usage: %s <mol file> <D mat bin file> <ref J mat bin file> <relerr>\n", argv[0]);
+        return 255;
+    }
     
     H2ERI_t h2eri;
-    H2ERI_init(&h2eri, 1e-10, 1e-10, 1e-6);
+    H2ERI_init(&h2eri, 1e-10, 1e-10, atof(argv[4]));
     
     // 1. Read molecular file
     CMS_read_mol_file(argv[1], &h2eri->natom, &h2eri->nshell, &h2eri->shells);
@@ -43,6 +49,8 @@ int main(int argc, char **argv)
     for (int k = 0; k < 10; k++)
         H2ERI_build_Coulomb(h2eri, D_mat, J_mat);
     
+    H2ERI_print_statistic(h2eri);
+
     // 7. Calculate the relative error
     double ref_l2 = 0.0, err_l2 = 0.0;
     for (int i = 0; i < nbf2; i++)
@@ -54,8 +62,6 @@ int main(int argc, char **argv)
     ref_l2 = sqrt(ref_l2);
     err_l2 = sqrt(err_l2);
     printf("||J_{H2} - J_{ref}||_2 / ||J_{ref}||_2 = %e\n", err_l2 / ref_l2);
-    
-    H2ERI_print_statistic(h2eri);
     
     free(J_ref);
     free(J_mat);
