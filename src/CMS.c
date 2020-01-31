@@ -136,6 +136,12 @@ void CMS_destroy_shell_pairs(const int num_sp, multi_sp_t *sp)
         simint_free_multi_shellpair(&sp[i]);
 }
 
+// Get the number of basis function pairs in a shell pair
+int CMS_get_sp_nbfp(const multi_sp_p sp)
+{
+    return NCART(sp->am1) * NCART(sp->am2);
+}
+
 // Print all shell information, for debugging
 void CMS_print_shells(const int nshell, shell_t *shells)
 {

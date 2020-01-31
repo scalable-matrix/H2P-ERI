@@ -43,7 +43,7 @@ typedef struct eri_batch_buff* eri_batch_buff_t;
 // Input parameter:
 //   mol_fname : .mol file path
 // Output parameters:
-//   *natom_  : Total number of atoms in thr .mol file
+//   *natom_  : Total number of atoms in the .mol file
 //   *nshell_ : Total number of shells in the .mol file
 //   *shells_ : Array, all shells in the .mol file, stored in Simint shell structure
 void CMS_read_mol_file(const char *mol_fname, int *natom_, int *nshell_, shell_t **shells_);
@@ -65,6 +65,13 @@ void CMS_destroy_shell_pairs(const int num_sp, multi_sp_t *sp);
 //   nshell : Total number of shells
 //   shells : Array, all shells stored in Simint shell structure
 void CMS_print_shells(const int nshell, shell_t *shells);
+
+// Get the number of basis function pairs in a shell pair
+// Input parameter:
+//   sp : Target shell pair
+// Output parameter:
+//   <return> : Number of basis function pairs in the target shell pair
+int CMS_get_sp_nbfp(const multi_sp_p sp);
 
 // Get the Schwarz screening value from a given set of shells
 // Input parameters:
