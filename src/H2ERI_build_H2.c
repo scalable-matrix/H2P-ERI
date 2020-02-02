@@ -401,7 +401,7 @@ int H2ERI_gather_sum(const int *arr, H2P_int_vec_t idx)
 // Output parameters:
 //   A_valbuf : Buffer for storing nonzeros of A^T
 //   A_idxbuf : Buffer for storing nonzero indices of A^T
-void H2ERI_gen_rand_sparse_mm(const int k, const int n, H2P_dense_mat_t A_valbuf, H2P_int_vec_t A_idxbuf)
+void H2ERI_gen_rand_sparse_mat(const int k, const int n, H2P_dense_mat_t A_valbuf, H2P_int_vec_t A_idxbuf)
 {
     // Note: we calculate y^T := A^T * x^T. Since x/y is row-major, 
     // each of its row is a column of x^T/y^T. We can just use SpMV
@@ -692,13 +692,38 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 H2P_dense_mat_resize(A_block, A_blk_nrow, A_blk_ncol);
                 double *A_blk_pp = A_block->data;
                 double *A_blk_ff = A_block->data + A_blk_nrow;
+                
+                // Note: pp_{x, y, z} uses the same buffer as randmm_Aval, so 
+                // H2ERI_calc_NAI_pairs_to_mat() must be performed before using randmm_Aval
 
-                // (4.1) Construct the random sparse matrix for ERI block normalization
+                // (4.1) Construct the random sparse matrix for NAI block normalization
+                // (4.2) Calculate the NAI block and use the random sparse matrix to normalize it
+                H2P_dense_mat_resize(A_ff_pp, A_blk_nrow, A_pp_ncol + 1);
+                double *A_pp = A_ff_pp->data;
+                double *A_pp_buf = A_pp + A_blk_nrow * A_pp_ncol;
                 st = H2P_get_wtime_sec();
-                H2ERI_gen_rand_sparse_mm(A_ff_ncol, A_blk_nrow, randmm_Aval, randmm_Aidx);
+                H2ERI_calc_NAI_pairs_to_mat(
+                    sp_shells, num_sp, pair_idx->length, pair_idx->data, 
+                    num_pp, pp_x, pp_y, pp_z, A_pp, A_pp_ncol, A_pp_buf
+                );
+                et = H2P_get_wtime_sec();
+                timers[1] += et - st;
+                st = H2P_get_wtime_sec();
+                H2ERI_gen_rand_sparse_mat(A_pp_ncol, A_blk_nrow, randmm_Aval, randmm_Aidx);
+                H2ERI_calc_sparse_mm(
+                    A_blk_nrow, A_blk_nrow, A_pp_ncol,
+                    randmm_Aval, randmm_Aidx, 
+                    A_pp, A_pp_ncol, A_blk_pp, A_blk_ncol
+                );
                 et = H2P_get_wtime_sec();
                 timers[3] += et - st;
-                // (4.2) Calculate the ERI block strip by strip and use the random sparse
+
+                // (5.1) Construct the random sparse matrix for ERI block normalization
+                st = H2P_get_wtime_sec();
+                H2ERI_gen_rand_sparse_mat(A_ff_ncol, A_blk_nrow, randmm_Aval, randmm_Aidx);
+                et = H2P_get_wtime_sec();
+                timers[3] += et - st;
+                // (5.2) Calculate the ERI block strip by strip and use the random sparse
                 //        matrix to normalize it
                 H2P_dense_mat_resize(A_ff_pp, max_nbfp, A_ff_ncol);
                 double *A_ff = A_ff_pp->data;
@@ -725,31 +750,6 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                     nbfp_cnt += nbfp_k;
                 }
                 assert(nbfp_cnt == A_blk_nrow);
-
-                // (5.1) Construct the random sparse matrix for NAI block normalization
-                st = H2P_get_wtime_sec();
-                H2ERI_gen_rand_sparse_mm(A_pp_ncol, A_blk_nrow, randmm_Aval, randmm_Aidx);
-                et = H2P_get_wtime_sec();
-                timers[3] += et - st;
-                // (5.2) Calculate the NAI block and use the random sparse matrix to normalize it
-                H2P_dense_mat_resize(A_ff_pp, A_blk_nrow, A_pp_ncol + 1);
-                double *A_pp = A_ff_pp->data;
-                double *A_pp_buf = A_pp + A_blk_nrow * A_pp_ncol;
-                st = H2P_get_wtime_sec();
-                H2ERI_calc_NAI_pairs_to_mat(
-                    sp_shells, num_sp, pair_idx->length, pair_idx->data, 
-                    num_pp, pp_x, pp_y, pp_z, A_pp, A_pp_ncol, A_pp_buf
-                );
-                et = H2P_get_wtime_sec();
-                timers[1] += et - st;
-                st = H2P_get_wtime_sec();
-                H2ERI_calc_sparse_mm(
-                    A_blk_nrow, A_blk_nrow, A_pp_ncol,
-                    randmm_Aval, randmm_Aidx, 
-                    A_pp, A_pp_ncol, A_blk_pp, A_blk_ncol
-                );
-                et = H2P_get_wtime_sec();
-                timers[3] += et - st;
 
                 // (6) ID compression
                 st = H2P_get_wtime_sec();
