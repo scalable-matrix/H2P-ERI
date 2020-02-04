@@ -104,6 +104,7 @@ void H2ERI_HFSCF(TinyDFT_t TinyDFT, H2ERI_t h2eri, const int max_iter)
         }
         
         TinyDFT->iter++;
+        fflush(stdout);
     }
     printf("--------------- SCF iterations finished ---------------\n");
 }
