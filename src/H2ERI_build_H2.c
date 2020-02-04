@@ -590,20 +590,22 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
             H2P_dense_mat_t  pp             = thread_buf->mat0;
             H2P_dense_mat_t  A_ff_pp        = thread_buf->mat1;
             H2P_dense_mat_t  A_block        = thread_buf->mat2;
-            H2P_dense_mat_t  randmm_Aval    = thread_buf->mat0;
+            //H2P_dense_mat_t  randmm_Aval    = thread_buf->mat0;
             H2P_dense_mat_t  QR_buff        = thread_buf->mat0;
             simint_buff_t    simint_buff    = h2eri->simint_buffs[tid];
             eri_batch_buff_t eri_batch_buff = h2eri->eri_batch_buffs[tid];
             double *timers = U_timers + 8 * tid;
             double st, et;
             
-            H2P_int_vec_t work_buf1, work_buf2, randmm_Aidx_cup;
-            H2P_int_vec_t randmm_Aidx1, node_ff_idx1;
+            H2P_int_vec_t   work_buf1, work_buf2, randmm_Aidx_cup;
+            H2P_int_vec_t   randmm_Aidx1, node_ff_idx1;
+            H2P_dense_mat_t randmm_Aval;
             H2P_int_vec_init(&work_buf1, 1024);
             H2P_int_vec_init(&work_buf2, 1024);
             H2P_int_vec_init(&randmm_Aidx_cup, 1024);
             H2P_int_vec_init(&randmm_Aidx1, 1024);
             H2P_int_vec_init(&node_ff_idx1, 1024);
+            H2P_dense_mat_init(&randmm_Aval, 1, 1024);
             
             h2pack->tb[tid]->timer = -H2P_get_wtime_sec();
             #pragma omp for schedule(dynamic) nowait
@@ -705,23 +707,62 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 // H2ERI_calc_NAI_pairs_to_mat() must be performed before using randmm_Aval
 
                 // (4.1) Construct the random sparse matrix for NAI block normalization
+                H2ERI_gen_rand_sparse_mat(A_pp_ncol, A_blk_nrow, randmm_Aval, randmm_Aidx);
+                // Find the union of all randmm_Aidx
+                int rand_nnz_col = (16 <= A_pp_ncol) ? 16 : A_pp_ncol;
+                int randmm_A_nnz = A_blk_nrow * rand_nnz_col;
+                int *randmm_A_col = randmm_Aidx->data + (A_blk_nrow + 1);
+                H2P_int_vec_set_capacity(work_buf1, A_pp_ncol);
+                for (int k = 0; k < A_pp_ncol; k++)
+                    work_buf1->data[k] = -1;
+                work_buf1->length = A_pp_ncol;
+                for (int k = 0; k < randmm_A_nnz; k++)
+                    work_buf1->data[randmm_A_col[k]] = 1;
+                H2P_int_vec_set_capacity(randmm_Aidx_cup, A_pp_ncol);
+                int Aidx_cup_cnt = 0;
+                for (int k = 0; k < A_pp_ncol; k++)
+                {
+                    if (work_buf1->data[k] == -1) continue;
+                    randmm_Aidx_cup->data[Aidx_cup_cnt] = k;
+                    work_buf1->data[k] = Aidx_cup_cnt;
+                    Aidx_cup_cnt++;
+                }
+                randmm_Aidx_cup->length = Aidx_cup_cnt;
+                Aidx_cup_cnt = 0;
+                for (int k = 0; k < A_pp_ncol; k++)
+                {
+                    if (work_buf1->data[k] == -1) continue;
+                    if (Aidx_cup_cnt != k)
+                    {
+                        pp_x[Aidx_cup_cnt] = pp_x[k];
+                        pp_y[Aidx_cup_cnt] = pp_y[k];
+                        pp_z[Aidx_cup_cnt] = pp_z[k];
+                    }
+                    Aidx_cup_cnt++;
+                }
+                // Map the old randmm_Aidx to new one
+                for (int k = 0; k < randmm_A_nnz; k++)
+                {
+                    int nnz_idx = work_buf1->data[randmm_A_col[k]];
+                    assert(nnz_idx != -1);
+                    randmm_A_col[k] = nnz_idx;
+                }
+                H2P_dense_mat_resize(A_ff_pp, A_blk_nrow, Aidx_cup_cnt + 1);
                 // (4.2) Calculate the NAI block and use the random sparse matrix to normalize it
-                H2P_dense_mat_resize(A_ff_pp, A_blk_nrow, A_pp_ncol + 1);
                 double *A_pp = A_ff_pp->data;
-                double *A_pp_buf = A_pp + A_blk_nrow * A_pp_ncol;
+                double *A_pp_buf = A_pp + A_blk_nrow * Aidx_cup_cnt;
                 st = H2P_get_wtime_sec();
                 H2ERI_calc_NAI_pairs_to_mat(
                     sp_shells, num_sp, pair_idx->length, pair_idx->data, 
-                    num_pp, pp_x, pp_y, pp_z, A_pp, A_pp_ncol, A_pp_buf
+                    Aidx_cup_cnt, pp_x, pp_y, pp_z, A_pp, Aidx_cup_cnt, A_pp_buf
                 );
                 et = H2P_get_wtime_sec();
                 timers[1] += et - st;
                 st = H2P_get_wtime_sec();
-                H2ERI_gen_rand_sparse_mat(A_pp_ncol, A_blk_nrow, randmm_Aval, randmm_Aidx);
                 H2ERI_calc_sparse_mm(
-                    A_blk_nrow, A_blk_nrow, A_pp_ncol,
+                    A_blk_nrow, A_blk_nrow, Aidx_cup_cnt,
                     randmm_Aval, randmm_Aidx, 
-                    A_pp, A_pp_ncol, A_blk_pp, A_blk_ncol
+                    A_pp, Aidx_cup_cnt, A_blk_pp, A_blk_ncol
                 );
                 et = H2P_get_wtime_sec();
                 timers[3] += et - st;
@@ -732,9 +773,9 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 // Find the union of all randmm_Aidx
                 // Note: the first (A_blk_nrow+1) elements in randmm_Aidx are row_ptr,
                 //       the rest RAND_NNZ_COL * A_blk_nrow elements are col
-                int rand_nnz_col = (16 <= A_ff_ncol) ? 16 : A_ff_ncol;
-                int randmm_A_nnz = A_blk_nrow * rand_nnz_col;
-                int *randmm_A_col = randmm_Aidx->data + (A_blk_nrow + 1);
+                rand_nnz_col = (16 <= A_ff_ncol) ? 16 : A_ff_ncol;
+                randmm_A_nnz = A_blk_nrow * rand_nnz_col;
+                randmm_A_col = randmm_Aidx->data + (A_blk_nrow + 1);
                 H2P_int_vec_set_capacity(work_buf1, A_ff_ncol);
                 for (int k = 0; k < A_ff_ncol; k++)
                     work_buf1->data[k] = -1;
@@ -742,7 +783,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 for (int k = 0; k < randmm_A_nnz; k++)
                     work_buf1->data[randmm_A_col[k]] = 1;
                 H2P_int_vec_set_capacity(randmm_Aidx_cup, A_ff_ncol);
-                int Aidx_cup_cnt = 0;
+                Aidx_cup_cnt = 0;
                 for (int k = 0; k < A_ff_ncol; k++)
                 {
                     if (work_buf1->data[k] == -1) continue;
@@ -834,6 +875,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
             H2P_int_vec_destroy(randmm_Aidx_cup);
             H2P_int_vec_destroy(randmm_Aidx1);
             H2P_int_vec_destroy(node_ff_idx1);
+            H2P_dense_mat_destroy(randmm_Aval);
         }  // End of "#pragma omp parallel"
         
         #ifdef PROFILING_OUTPUT
