@@ -90,7 +90,7 @@ void H2ERI_partition_sp_centers(H2ERI_t h2eri, int max_leaf_points, double max_l
         simint_initialize_multi_shellpair(&h2eri->sp[i]);
         simint_create_multi_shellpair(
             1, &h2eri->sp_shells[i + num_sp], 
-            1, &h2eri->sp_shells[i], &h2eri->sp[i], 0
+            1, &h2eri->sp_shells[i], &h2eri->sp[i], SIMINT_SCREEN_NONE
         );
     }
 }

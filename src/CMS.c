@@ -197,7 +197,7 @@ double CMS_get_Schwarz_scrval(const int nshell, shell_t *shells, double *scr_val
             {
                 int dimN = shell_bf_num[N];
                 
-                simint_create_multi_shellpair(1, &shells[M], 1, &shells[N], &MN_pair, 0);
+                simint_create_multi_shellpair(1, &shells[M], 1, &shells[N], &MN_pair, SIMINT_SCREEN_NONE);
                 int ERI_size = simint_compute_eri(&MN_pair, &MN_pair, 0.0, work_mem, ERI_mem);
                 if (ERI_size <= 0) continue;
                 
@@ -342,11 +342,12 @@ void CMS_calc_ERI_batch(
     ket_multipairs->nprim = 0;
     simint_cat_shellpairs(
         n_pair, (const struct simint_multi_shellpair **) batch_ket_pairs, 
-        ket_multipairs, 0
+        ket_multipairs, SIMINT_SCREEN_NONE
     );
     
+    double prim_scrval = 0.0;
     int ret = simint_compute_eri(
-        bra_pair, ket_multipairs, 0.0, 
+        bra_pair, ket_multipairs, prim_scrval, 
         simint_buff->work_mem, simint_buff->ERI_mem
     );
     if (ret == 0)
