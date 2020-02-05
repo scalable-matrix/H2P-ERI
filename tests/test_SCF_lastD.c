@@ -92,7 +92,13 @@ void TinyDFT_SCF(TinyDFT_t TinyDFT, const int max_iter, const int J_op, const in
                 F_mat[i] = Hcore_mat[i] + 2 * J_mat[i] + XC_mat[i];
         }
         et1 = get_wtime_sec();
-        printf("* Build Fock matrix     : %.3lf (s), J, K/XC = %.3lf, %.3lf (s)\n", et1 - st1, st2 - st1, et1 - st2);
+        if (J_op != 0 || K_op != 0)
+        {
+            printf(
+                "* Build Fock matrix     : %.3lf (s), J, K/XC = %.3lf, %.3lf (s)\n", 
+                et1 - st1, st2 - st1, et1 - st2
+            );
+        }
         
         // Calculate new system energy
         st1 = get_wtime_sec();
@@ -265,7 +271,14 @@ int main(int argc, char **argv)
             return 255;
         }
         use_DF = 1;
-        TinyDFT_setup_DF(TinyDFT, argv[6], argv[2]);
+        // If we don't need DF for K build, reduce memory usage in DF, only DF tensor build
+        // will become slower; otherwise, use more memory in DF for better K build performance
+        if (K_op == 1)
+        {
+            TinyDFT_setup_DF(TinyDFT, argv[6], argv[2], 0);
+        } else {
+            TinyDFT_setup_DF(TinyDFT, argv[6], argv[2], 1);
+        }
         TinyDFT_build_Cocc_from_Dmat(TinyDFT, TinyDFT->D_mat, TinyDFT->Cocc_mat);
     }
     
