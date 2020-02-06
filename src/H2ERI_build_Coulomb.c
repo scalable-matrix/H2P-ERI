@@ -7,8 +7,6 @@
 #include "H2Pack_matvec.h"
 #include "H2ERI_typedef.h"
 
-// TODO: OpenMP parallelize H2ERI_uncontract_den_mat() and H2ERI_contract_H2_matvec()
-
 // "Uncontract" the density matrix according to SSP and unroll 
 // the result to a column for H2 matvec.
 // Input parameters:
@@ -32,6 +30,7 @@ void H2ERI_uncontract_den_mat(H2ERI_t h2eri, const double *den_mat)
     int *sp_shell_idx  = h2eri->sp_shell_idx;
     double *x = h2eri->unc_denmat_x;
     
+    #pragma omp parallel for schedule(dynamic, 16)
     for (int i = 0; i < num_sp; i++)
     {
         int x_spos = sp_bfp_sidx[i];
@@ -84,8 +83,10 @@ void H2ERI_contract_H2_matvec(H2ERI_t h2eri, double *J_mat)
     int *sp_shell_idx  = h2eri->sp_shell_idx;
     double *y = h2eri->H2_matvec_y;
     
+    #pragma omp parallel for schedule(static)
     for (int i = 0; i < num_bf * num_bf; i++) J_mat[i] = 0.0;
     
+    #pragma omp parallel for schedule(dynamic, 16)
     for (int i = 0; i < num_sp; i++)
     {
         int y_spos = sp_bfp_sidx[i];
@@ -115,6 +116,7 @@ void H2ERI_contract_H2_matvec(H2ERI_t h2eri, double *J_mat)
     }
     
     // Symmetrize the Coulomb matrix: J_mat = J_mat + J_mat^T
+    #pragma omp parallel for schedule(dynamic, 16)
     for (int i = 0; i < num_bf; i++)
     {
         for (int j = 0; j < i; j++)

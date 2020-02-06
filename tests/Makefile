@@ -19,7 +19,7 @@ ifeq ($(USE_LIBXC), 1)
 LDFLAGS += -L$(LIBXC_LIBDIR) -lxc
 endif
 
-SRCS = H2ERI-HF.c H2ERI-DFT.c test_SCF_lastD.c test_input_mat.c
+SRCS = H2ERI-HF.c H2ERI-DFT.c test_SCF_lastD.c test_input_mat.c test_perf.c
 OBJS = $(SRCS:.c=.o)
 EXES = $(OBJS:.o=.exe)
 
