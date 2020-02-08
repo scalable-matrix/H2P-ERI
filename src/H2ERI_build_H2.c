@@ -25,7 +25,7 @@
 //   npts_layer : Minimum number of proxy points on each layer
 // Output parameters:
 //   pp : H2P_dense_mat structure, contains coordinates of proxy points
-static void H2ERI_generate_proxy_point_layers(
+void H2ERI_generate_proxy_point_layers(
     const double r1, const double r2, const int nlayer, 
     int npts_layer, H2P_dense_mat_t pp
 )
@@ -116,7 +116,7 @@ static void H2ERI_generate_proxy_point_layers(
 // Output parameters:
 //   h2eri->ovlp_ff_idx : Array, size h2pack->n_node, i-th vector contains
 //                        SSP indices that satisfy the requirements.
-static void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri)
+void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri)
 {
     H2Pack_t h2pack = h2eri->h2pack;
     int    n_node         = h2pack->n_node;
@@ -273,7 +273,7 @@ static void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri)
 // Output parameters:
 //   pair_idx    : Vector, SSP indices that contains target row indices set
 //   row_idx_new : Vector, target row new indices in pair_idx SSP
-static void H2ERI_extract_shell_pair_idx(
+void H2ERI_extract_shell_pair_idx(
     const multi_sp_t *sp, H2P_int_vec_t row_idx,
     H2P_int_vec_t sp_idx,   H2P_int_vec_t work_buf,
     H2P_int_vec_t pair_idx, H2P_int_vec_t row_idx_new
@@ -345,7 +345,7 @@ static void H2ERI_extract_shell_pair_idx(
 //   idx : Indices of elements
 // Output parameter:
 //   <return> : Sum result
-static int H2ERI_gather_sum(const int *arr, H2P_int_vec_t idx)
+int H2ERI_gather_sum(const int *arr, H2P_int_vec_t idx)
 {
     int res = 0;
     for (int i = 0; i < idx->length; i++) 
@@ -361,7 +361,7 @@ static int H2ERI_gather_sum(const int *arr, H2P_int_vec_t idx)
 // Output parameters:
 //   A_valbuf : Buffer for storing nonzeros of A^T
 //   A_idxbuf : Buffer for storing nonzero indices of A^T
-static void H2ERI_gen_rand_sparse_mat(const int k, const int n, H2P_dense_mat_t A_valbuf, H2P_int_vec_t A_idxbuf)
+void H2ERI_gen_rand_sparse_mat(const int k, const int n, H2P_dense_mat_t A_valbuf, H2P_int_vec_t A_idxbuf)
 {
     // Note: we calculate y^T := A^T * x^T. Since x/y is row-major, 
     // each of its row is a column of x^T/y^T. We can just use SpMV
@@ -410,7 +410,7 @@ static void H2ERI_gen_rand_sparse_mat(const int k, const int n, H2P_dense_mat_t 
 //   ldy      : Leading dimension of y
 // Output parameters:
 //   y        : m-by-n row-major dense matrix, leading dimension ldy
-static void H2ERI_calc_sparse_mm(
+void H2ERI_calc_sparse_mm(
     const int m, const int n, const int k,
     H2P_dense_mat_t A_valbuf, H2P_int_vec_t A_idxbuf,
     double *x, const int ldx, double *y, const int ldy
@@ -447,7 +447,7 @@ static void H2ERI_calc_sparse_mm(
 //   h2eri : H2ERI structure with point partitioning & shell pair info
 // Output parameter:
 //   h2eri : H2ERI structure with H2 projection blocks
-static void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
+void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
 {
     H2Pack_t h2pack = h2eri->h2pack;
     int    n_thread       = h2pack->n_thread;
@@ -920,7 +920,7 @@ static void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
 //   h2eri : H2ERI structure with point partitioning & shell pair info
 // Output parameter:
 //   h2eri : H2ERI structure with H2 generator blocks
-static void H2ERI_build_B(H2ERI_t h2eri)
+void H2ERI_build_B(H2ERI_t h2eri)
 {
     H2Pack_t h2pack = h2eri->h2pack;
     int n_thread          = h2pack->n_thread;
@@ -1010,8 +1010,9 @@ static void H2ERI_build_B(H2ERI_t h2eri)
         eri_batch_buff_t eri_batch_buff = h2eri->eri_batch_buffs[tid];
         
         h2pack->tb[tid]->timer = -H2P_get_wtime_sec();
-        #pragma omp for schedule(dynamic) nowait
-        for (int i_blk = 0; i_blk < n_B_blk; i_blk++)
+        //#pragma omp for schedule(dynamic) nowait
+        //for (int i_blk = 0; i_blk < n_B_blk; i_blk++)
+        int i_blk = tid;  // Follow H2Pack, use NUMA first-touch policy for better H2 matvec performance
         {
             int blk_s_index = B_blk->data[i_blk];
             int blk_e_index = B_blk->data[i_blk + 1];
@@ -1105,7 +1106,7 @@ static void H2ERI_build_B(H2ERI_t h2eri)
 //   h2eri : H2ERI structure with point partitioning & shell pair info
 // Output parameter:
 //   h2eri : H2ERI structure with H2 dense blocks
-static void H2ERI_build_D(H2ERI_t h2eri)
+void H2ERI_build_D(H2ERI_t h2eri)
 {
     H2Pack_t h2pack = h2eri->h2pack;
     int n_thread         = h2pack->n_thread;
@@ -1193,8 +1194,9 @@ static void H2ERI_build_D(H2ERI_t h2eri)
         h2pack->tb[tid]->timer = -H2P_get_wtime_sec();
         
         // 3. Generate diagonal blocks (leaf node self interaction)
-        #pragma omp for schedule(dynamic) nowait
-        for (int i_blk0 = 0; i_blk0 < n_D0_blk; i_blk0++)
+        //#pragma omp for schedule(dynamic) nowait
+        //for (int i_blk0 = 0; i_blk0 < n_D0_blk; i_blk0++)
+        int i_blk0 = tid;  // Follow H2Pack, use NUMA first-touch policy for better H2 matvec performance
         {
             int blk_s_index = D_blk0->data[i_blk0];
             int blk_e_index = D_blk0->data[i_blk0 + 1];
@@ -1216,8 +1218,9 @@ static void H2ERI_build_D(H2ERI_t h2eri)
         }  // End of i_blk0 loop
         
         // 4. Generate off-diagonal blocks from inadmissible pairs
-        #pragma omp for schedule(dynamic) nowait
-        for (int i_blk1 = 0; i_blk1 < n_D1_blk; i_blk1++)
+        //#pragma omp for schedule(dynamic) nowait
+        //for (int i_blk1 = 0; i_blk1 < n_D1_blk; i_blk1++)
+        int i_blk1 = tid;  // Follow H2Pack, use NUMA first-touch policy for better H2 matvec performance
         {
             int pt_s = D_blk1->data[i_blk1];
             int pt_e = D_blk1->data[i_blk1 + 1];
