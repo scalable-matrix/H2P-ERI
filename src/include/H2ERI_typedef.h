@@ -14,21 +14,21 @@ extern "C" {
 
 struct H2ERI
 {
-    int     natom;                      // Number of atoms (from input file)
-    int     nshell;                     // Number of contracted shells (from input file)
-    int     max_am;                     // Maximum angular momentum in the system
-    int     num_bf;                     // Number of basis functions in the system, == shell_bf_sidx[nshell]
-    int     num_sp;                     // Number of screened shell pairs (SSP)
-    int     num_sp_bfp;                 // Number of SSP basis function pairs, == sp_bfp_sidx[num_sp]
-    int     pp_npts_layer;              // Number of proxy points on each layer
-    int     pp_nlayer_ext;              // Number of proxy point layers on each extent
-    int     *shell_bf_sidx;             // Array, size nshell, indices of each shell's first basis function
-    int     *sp_nbfp;                   // Array, size num_sp, number of basis function pairs of each SSP
-    int     *sp_bfp_sidx;               // Array, size num_sp+1, indices of each SSP's first basis function pair
-    int     *sp_shell_idx;              // Array, size 2 * num_sp, each row is the contracted shell indices of a SSP
-    int     *index_seq;                 // Array, size num_sp, [0, num_sp-1]
-    double  scr_tol;                    // Tolerance of Schwarz screening
-    double  ext_tol;                    // Tolerance of shell pair extent
+    int    natom;                       // Number of atoms (from input file)
+    int    nshell;                      // Number of contracted shells (from input file)
+    int    max_am;                      // Maximum angular momentum in the system
+    int    num_bf;                      // Number of basis functions in the system, == shell_bf_sidx[nshell]
+    int    num_sp;                      // Number of screened shell pairs (SSP)
+    int    num_sp_bfp;                  // Number of SSP basis function pairs, == sp_bfp_sidx[num_sp]
+    int    pp_npts_layer;               // Number of proxy points on each layer
+    int    pp_nlayer_ext;               // Number of proxy point layers on each extent
+    int    *shell_bf_sidx;              // Array, size nshell, indices of each shell's first basis function
+    int    *sp_nbfp;                    // Array, size num_sp, number of basis function pairs of each SSP
+    int    *sp_bfp_sidx;                // Array, size num_sp+1, indices of each SSP's first basis function pair
+    int    *sp_shell_idx;               // Array, size 2 * num_sp, each row is the contracted shell indices of a SSP
+    int    *index_seq;                  // Array, size num_sp, [0, num_sp-1]
+    double scr_tol;                     // Tolerance of Schwarz screening
+    double ext_tol;                     // Tolerance of shell pair extent
     double *sp_center;                  // Array, size 3 * num_sp, each column is a SSP's center
     double *sp_extent;                  // Array, size num_sp, extents of SSP
     double *box_extent;                 // Array, size h2pack->n_node, extents of each H2 node box

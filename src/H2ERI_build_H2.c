@@ -923,6 +923,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
 void H2ERI_build_B(H2ERI_t h2eri)
 {
     H2Pack_t h2pack = h2eri->h2pack;
+    int BD_JIT            = h2pack->BD_JIT;
     int n_thread          = h2pack->n_thread;
     int n_node            = h2pack->n_node;
     int n_point           = h2pack->n_point;
@@ -992,16 +993,18 @@ void H2ERI_build_B(H2ERI_t h2eri)
         h2pack->mat_size[4] += (B_nrow[i] * B_ncol[i]);
         h2pack->mat_size[4] += 2 * (B_nrow[i] + B_ncol[i]);
     }
-    int BD_ntask_thread = (h2pack->BD_JIT == 1) ? BD_NTASK_THREAD : 1;
+    int BD_ntask_thread = (BD_JIT == 1) ? BD_NTASK_THREAD : 1;
     H2P_partition_workload(n_r_adm_pair, B_ptr + 1, B_total_size, n_thread * BD_ntask_thread, B_blk);
     for (int i = 1; i <= n_r_adm_pair; i++) B_ptr[i] += B_ptr[i - 1];
     h2pack->mat_size[1] = B_total_size;
+    
+    if (BD_JIT == 1) return;
     
     // 3. Generate B matrices
     h2pack->B_data = (DTYPE*) H2P_malloc_aligned(sizeof(DTYPE) * B_total_size);
     assert(h2pack->B_data != NULL);
     DTYPE *B_data = h2pack->B_data;
-    const int n_B_blk = B_blk->length;
+    const int n_B_blk = B_blk->length - 1;
     #pragma omp parallel num_threads(n_thread)
     {
         int tid = omp_get_thread_num();
@@ -1014,9 +1017,14 @@ void H2ERI_build_B(H2ERI_t h2eri)
         //for (int i_blk = 0; i_blk < n_B_blk; i_blk++)
         int i_blk = tid;  // Follow H2Pack, use NUMA first-touch policy for better H2 matvec performance
         {
-            int blk_s_index = B_blk->data[i_blk];
-            int blk_e_index = B_blk->data[i_blk + 1];
-            for (int i = blk_s_index; i < blk_e_index; i++)
+            int B_blk_s = B_blk->data[i_blk];
+            int B_blk_e = B_blk->data[i_blk + 1];
+            if (i_blk >= n_B_blk)
+            {
+                B_blk_s = 0; 
+                B_blk_e = 0;
+            }
+            for (int i = B_blk_s; i < B_blk_e; i++)
             {
                 int node0  = r_adm_pairs[2 * i];
                 int node1  = r_adm_pairs[2 * i + 1];
@@ -1109,6 +1117,7 @@ void H2ERI_build_B(H2ERI_t h2eri)
 void H2ERI_build_D(H2ERI_t h2eri)
 {
     H2Pack_t h2pack = h2eri->h2pack;
+    int BD_JIT           = h2pack->BD_JIT;
     int n_thread         = h2pack->n_thread;
     int n_point          = h2pack->n_point;
     int n_leaf_node      = h2pack->n_leaf_node;
@@ -1153,7 +1162,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
         h2pack->mat_size[6] += node_nbfp * node_nbfp;
         h2pack->mat_size[6] += node_nbfp + node_nbfp;
     }
-    int BD_ntask_thread = (h2pack->BD_JIT == 1) ? BD_NTASK_THREAD : 1;
+    int BD_ntask_thread = (BD_JIT == 1) ? BD_NTASK_THREAD : 1;
     H2P_partition_workload(n_leaf_node, D_ptr + 1, D0_total_size, n_thread * BD_ntask_thread, D_blk0);
     size_t D1_total_size = 0;
     for (int i = 0; i < n_r_inadm_pair; i++)
@@ -1180,11 +1189,13 @@ void H2ERI_build_D(H2ERI_t h2eri)
     for (int i = 1; i <= n_leaf_node + n_r_inadm_pair; i++) D_ptr[i] += D_ptr[i - 1];
     h2pack->mat_size[2] = D0_total_size + D1_total_size;
     
+    if (BD_JIT == 1) return;
+    
     h2pack->D_data = (double*) H2P_malloc_aligned(sizeof(double) * (D0_total_size + D1_total_size));
     assert(h2pack->D_data != NULL);
     double *D_data = h2pack->D_data;
-    const int n_D0_blk = D_blk0->length;
-    const int n_D1_blk = D_blk1->length;
+    const int n_D0_blk = D_blk0->length - 1;
+    const int n_D1_blk = D_blk1->length - 1;
     #pragma omp parallel num_threads(n_thread)
     {
         int tid = omp_get_thread_num();
@@ -1198,9 +1209,14 @@ void H2ERI_build_D(H2ERI_t h2eri)
         //for (int i_blk0 = 0; i_blk0 < n_D0_blk; i_blk0++)
         int i_blk0 = tid;  // Follow H2Pack, use NUMA first-touch policy for better H2 matvec performance
         {
-            int blk_s_index = D_blk0->data[i_blk0];
-            int blk_e_index = D_blk0->data[i_blk0 + 1];
-            for (int i = blk_s_index; i < blk_e_index; i++)
+            int D_blk0_s = D_blk0->data[i_blk0];
+            int D_blk0_e = D_blk0->data[i_blk0 + 1];
+            if (i_blk0 >= n_D0_blk)
+            {
+                D_blk0_s = 0;
+                D_blk0_e = 0;
+            }
+            for (int i = D_blk0_s; i < D_blk0_e; i++)
             {
                 int node = leaf_nodes[i];
                 int pt_s = pt_cluster[2 * node];
@@ -1222,9 +1238,14 @@ void H2ERI_build_D(H2ERI_t h2eri)
         //for (int i_blk1 = 0; i_blk1 < n_D1_blk; i_blk1++)
         int i_blk1 = tid;  // Follow H2Pack, use NUMA first-touch policy for better H2 matvec performance
         {
-            int pt_s = D_blk1->data[i_blk1];
-            int pt_e = D_blk1->data[i_blk1 + 1];
-            for (int i = pt_s; i < pt_e; i++)
+            int D_blk1_s = D_blk1->data[i_blk1];
+            int D_blk1_e = D_blk1->data[i_blk1 + 1];
+            if (i_blk1 >= n_D1_blk)
+            {
+                D_blk1_s = 0;
+                D_blk1_e = 0;
+            }
+            for (int i = D_blk1_s; i < D_blk1_e; i++)
             {
                 int node0 = r_inadm_pairs[2 * i];
                 int node1 = r_inadm_pairs[2 * i + 1];
@@ -1248,11 +1269,6 @@ void H2ERI_build_D(H2ERI_t h2eri)
         h2pack->tb[tid]->timer += H2P_get_wtime_sec();
     }  // End of "pragma omp parallel"
     
-    //FILE *ouf = fopen("D.bin", "wb");
-    //fwrite(D_data, sizeof(double), h2pack->mat_size[2], ouf);
-    //fclose(ouf);
-    //printf("Save D results to file done\n");
-    
     #ifdef PROFILING_OUTPUT
     double max_t = 0.0, avg_t = 0.0, min_t = 19241112.0;
     for (int i = 0; i < n_thread; i++)
@@ -1268,9 +1284,12 @@ void H2ERI_build_D(H2ERI_t h2eri)
 }
 
 // Build H2 representation for ERI tensor
-void H2ERI_build_H2(H2ERI_t h2eri)
+void H2ERI_build_H2(H2ERI_t h2eri, const int BD_JIT)
 {
     double st, et;
+
+    if (BD_JIT == 1) h2eri->h2pack->BD_JIT = 1;
+    else h2eri->h2pack->BD_JIT = 0;
 
     // 1. Build projection matrices and skeleton row sets
     st = H2P_get_wtime_sec();

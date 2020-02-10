@@ -27,9 +27,9 @@ void TinyDFT_copy_shells_to_H2ERI(TinyDFT_t TinyDFT, H2ERI_t h2eri)
 
 int main(int argc, char **argv)
 {
-    if (argc < 4)
+    if (argc < 5)
     {
-        printf("Usage: %s <basis> <xyz> <QR_tol>\n", argv[0]);
+        printf("Usage: %s <basis> <xyz> <QR_tol> <BD_JIT>\n", argv[0]);
         return 255;
     }
     
@@ -46,7 +46,7 @@ int main(int argc, char **argv)
     TinyDFT_copy_shells_to_H2ERI(TinyDFT, h2eri);
     H2ERI_process_shells(h2eri);
     H2ERI_partition(h2eri);
-    H2ERI_build_H2(h2eri);
+    H2ERI_build_H2(h2eri, atoi(argv[4]));
     double et = get_wtime_sec();
     printf("H2ERI build H2 for J matrix done, used %.3lf (s)\n", et - st);
     

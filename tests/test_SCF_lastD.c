@@ -161,7 +161,7 @@ void TinyDFT_SCF(TinyDFT_t TinyDFT, const int max_iter, const int J_op, const in
     #pragma omp simd
     for (int i = 0; i < mat_size; i++) Jnorm += J_mat[i] * J_mat[i];
     Jnorm = sqrt(Jnorm);
-    printf("Direct method constructed J matrix fro-norm  = %e\n", Jnorm);
+    printf("Direct method constructed J matrix fro-norm      = %e\n", Jnorm);
 
     // H2ERI 1e-5
     H2ERI_t h2eri5;
@@ -169,7 +169,7 @@ void TinyDFT_SCF(TinyDFT_t TinyDFT, const int max_iter, const int J_op, const in
     TinyDFT_copy_shells_to_H2ERI(TinyDFT, h2eri5);
     H2ERI_process_shells(h2eri5);
     H2ERI_partition(h2eri5);
-    H2ERI_build_H2(h2eri5);
+    H2ERI_build_H2(h2eri5, 0);
     H2ERI_build_Coulomb(h2eri5, D_mat, J_mat_test);
 
     err_h2eri5 = 0;
@@ -180,7 +180,7 @@ void TinyDFT_SCF(TinyDFT_t TinyDFT, const int max_iter, const int J_op, const in
         err_h2eri5 += diff * diff;
     }
     err_h2eri5 = sqrt(err_h2eri5) / Jnorm;
-    printf("H2ERI with 1e-5 constructed J relative error = %e\n", err_h2eri5);
+    printf("H2ERI with 1e-5 AOT constructed J relative error = %e\n", err_h2eri5);
     H2ERI_destroy(h2eri5);
 
     // H2ERI 1e-7 
@@ -189,7 +189,7 @@ void TinyDFT_SCF(TinyDFT_t TinyDFT, const int max_iter, const int J_op, const in
     TinyDFT_copy_shells_to_H2ERI(TinyDFT, h2eri7);
     H2ERI_process_shells(h2eri7);
     H2ERI_partition(h2eri7);
-    H2ERI_build_H2(h2eri7);
+    H2ERI_build_H2(h2eri7, 1);
     H2ERI_build_Coulomb(h2eri7, D_mat, J_mat_test);
 
     err_h2eri7 = 0; 
@@ -200,7 +200,7 @@ void TinyDFT_SCF(TinyDFT_t TinyDFT, const int max_iter, const int J_op, const in
         err_h2eri7 += diff * diff;
     }
     err_h2eri7 = sqrt(err_h2eri7) / Jnorm;
-    printf("H2ERI with 1e-7 constructed J relative error = %e\n", err_h2eri7);
+    printf("H2ERI with 1e-7 JIT constructed J relative error = %e\n", err_h2eri7);
     H2ERI_destroy(h2eri7);
 
     if (J_op == 0) return;
@@ -214,7 +214,7 @@ void TinyDFT_SCF(TinyDFT_t TinyDFT, const int max_iter, const int J_op, const in
         err_df += diff * diff;
     }
     err_df = sqrt(err_df) / Jnorm;
-    printf("DF constructed J relative error              = %e\n", err_df);
+    printf("DF constructed J relative error                 = %e\n", err_df);
 }
 
 void print_usage(const char *argv0)
@@ -259,7 +259,7 @@ int main(int argc, char **argv)
     TinyDFT_build_Hcore_S_X_mat(TinyDFT, TinyDFT->Hcore_mat, TinyDFT->S_mat, TinyDFT->X_mat);
     TinyDFT_build_Dmat_SAD(TinyDFT, TinyDFT->D_mat);
     et = get_wtime_sec();
-    printf("TinyDFT compute Hcore, S, X matrices over,         elapsed time = %.3lf (s)\n", et - st);
+    printf("TinyDFT compute Hcore, S, X matrices over, elapsed time = %.3lf (s)\n", et - st);
     
     // Set up density fitting
     if (J_op == 1 || K_op == 1)
@@ -302,7 +302,7 @@ int main(int argc, char **argv)
         st = get_wtime_sec();
         TinyDFT_setup_XC_integral(TinyDFT, xf_str, cf_str);
         et = get_wtime_sec();
-        printf("TinyDFT set up XC integral over,                   elapsed time = %.3lf (s)\n", et - st);
+        printf("TinyDFT set up XC integral over, elapsed time = %.3lf (s)\n", et - st);
     }
     
     // Do SCF calculation

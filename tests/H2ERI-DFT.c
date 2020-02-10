@@ -132,7 +132,7 @@ int main(int argc, char **argv)
     TinyDFT_copy_shells_to_H2ERI(TinyDFT, h2eri);
     H2ERI_process_shells(h2eri);
     H2ERI_partition(h2eri);
-    H2ERI_build_H2(h2eri);
+    H2ERI_build_H2(h2eri, 0);
     et = get_wtime_sec();
     printf("H2ERI build H2 for J matrix done, used %.3lf (s)\n", et - st);
     
