@@ -28,7 +28,7 @@ int main(int argc, char **argv)
     H2ERI_partition(h2eri);
     
     // 4. Build H2 representation for ERI tensor
-    H2ERI_build_H2(h2eri);
+    H2ERI_build_H2(h2eri, 0);
 
     // 5. Read the reference density and Coulomb matrix from binary file
     size_t nbf2 = h2eri->num_bf * h2eri->num_bf;

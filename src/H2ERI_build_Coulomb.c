@@ -180,8 +180,9 @@ void H2ERI_H2_matvec_intmd_mult_JIT(H2ERI_t h2eri, const double *x)
     #pragma omp parallel num_threads(n_thread)
     {
         int tid = omp_get_thread_num();
-        H2P_dense_mat_t tmpB = thread_buf[tid]->mat0;
-        simint_buff_t simint_buff = simint_buffs[tid];
+        
+        H2P_dense_mat_t  tmpB           = thread_buf[tid]->mat0;
+        simint_buff_t    simint_buff    = simint_buffs[tid];
         eri_batch_buff_t eri_batch_buff = eri_batch_buffs[tid];
         
         double *y = thread_buf[tid]->y;
@@ -360,9 +361,10 @@ void H2ERI_H2_matvec_dense_mult_JIT(H2ERI_t h2eri, const double *x)
     #pragma omp parallel num_threads(n_thread)
     {
         int tid = omp_get_thread_num();
-        simint_buff_t simint_buff = simint_buffs[tid];
+        
+        H2P_dense_mat_t  tmpD           = thread_buf[tid]->mat0;
+        simint_buff_t    simint_buff    = simint_buffs[tid];
         eri_batch_buff_t eri_batch_buff = eri_batch_buffs[tid];
-        H2P_dense_mat_t tmpD = thread_buf[tid]->mat0;
         
         double *y = thread_buf[tid]->y;
         
