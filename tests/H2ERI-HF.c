@@ -34,7 +34,6 @@ void H2ERI_HFSCF(TinyDFT_t TinyDFT, H2ERI_t h2eri, const int max_iter)
     TinyDFT->max_iter = max_iter;
     double E_prev, E_curr, E_delta = 19241112.0;
     
-    int    nbf            = TinyDFT->nbf;
     int    mat_size       = TinyDFT->mat_size;
     double *D_mat         = TinyDFT->D_mat;
     double *J_mat         = TinyDFT->J_mat;

@@ -4,7 +4,6 @@
 #include <assert.h>
 
 #include "CMS.h"
-#include "H2Pack_utils.h"
 #include "H2Pack_typedef.h"
 #include "H2ERI_typedef.h"
 

@@ -90,7 +90,7 @@ void CMS_read_mol_file(const char *mol_fname, int *natom_, int *nshell_, shell_t
                 sidx = shell_idx + l;
                 simint_initialize_shell(&shells[sidx]);
                 simint_allocate_shell(nprim, &shells[sidx]);
-                shells[sidx].am    = AM_map[(char) type[l]];;
+                shells[sidx].am    = AM_map[(char) type[l]];
                 shells[sidx].nprim = nprim;
                 shells[sidx].x     = x;
                 shells[sidx].y     = y;
@@ -469,7 +469,7 @@ void H2ERI_calc_NAI_pairs_to_mat(
         int ncart_MN = NCART(am_M) * NCART(am_N);
         for (int i = 0; i < n_point; i++)
         {
-            int ret = simint_compute_potential(
+            simint_compute_potential(
                 1, &atomic_nums, x + i, y + i, z + i,
                 N_shell, M_shell, trans_buf
             );

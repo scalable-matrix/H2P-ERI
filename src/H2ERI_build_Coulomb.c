@@ -5,9 +5,9 @@
 
 #include <omp.h>
 
-#include "H2Pack_utils.h"
 #include "H2Pack_matvec.h"
 #include "H2ERI_typedef.h"
+#include "utils.h"  // In H2Pack
 
 // These five external functions are in H2Pack_matvec.c, but not exposed in H2Pack_matvec.h
 extern void CBLAS_BI_GEMV(
@@ -49,7 +49,6 @@ void H2ERI_uncontract_den_mat(H2ERI_t h2eri, const double *den_mat)
     for (int i = 0; i < num_sp; i++)
     {
         int x_spos = sp_bfp_sidx[i];
-        int x_epos = sp_bfp_sidx[i + 1];
         int shell_idx0 = sp_shell_idx[i];
         int shell_idx1 = sp_shell_idx[i + num_sp];
         int srow = shell_bf_sidx[shell_idx0];
@@ -105,7 +104,6 @@ void H2ERI_contract_H2_matvec(H2ERI_t h2eri, double *J_mat)
     for (int i = 0; i < num_sp; i++)
     {
         int y_spos = sp_bfp_sidx[i];
-        int y_epos = sp_bfp_sidx[i + 1];
         int shell_idx0 = sp_shell_idx[i];
         int shell_idx1 = sp_shell_idx[i + num_sp];
         int srow = shell_bf_sidx[shell_idx0];
@@ -187,7 +185,7 @@ void H2ERI_H2_matvec_intmd_mult_JIT(H2ERI_t h2eri, const double *x)
         
         double *y = thread_buf[tid]->y;
         
-        thread_buf[tid]->timer = -H2P_get_wtime_sec();
+        thread_buf[tid]->timer = -get_wtime_sec();
         
         #pragma omp for schedule(static)
         for (int i = 0; i < n_node; i++)
@@ -315,7 +313,7 @@ void H2ERI_H2_matvec_intmd_mult_JIT(H2ERI_t h2eri, const double *x)
                 }
             }  // End of i loop
         }  // End of i_blk loop
-        thread_buf[tid]->timer += H2P_get_wtime_sec();
+        thread_buf[tid]->timer += get_wtime_sec();
     }  // End of "pragma omp parallel"
     
     // 3. Sum thread-local buffers in y1
@@ -368,7 +366,7 @@ void H2ERI_H2_matvec_dense_mult_JIT(H2ERI_t h2eri, const double *x)
         
         double *y = thread_buf[tid]->y;
         
-        thread_buf[tid]->timer = -H2P_get_wtime_sec();
+        thread_buf[tid]->timer = -get_wtime_sec();
         
         // 1. Diagonal blocks (leaf node self interaction)
         #pragma omp for schedule(dynamic) nowait
@@ -441,7 +439,7 @@ void H2ERI_H2_matvec_dense_mult_JIT(H2ERI_t h2eri, const double *x)
             }
         }  // End of i_blk1 loop
         
-        thread_buf[tid]->timer += H2P_get_wtime_sec();
+        thread_buf[tid]->timer += get_wtime_sec();
     }  // End of "pragma omp parallel"
     
     #ifdef PROFILING_OUTPUT
@@ -469,7 +467,7 @@ void H2ERI_H2_matvec_JIT(H2ERI_t h2eri, const double *x, double *y)
     double st, et;
     
     // 1. Reset partial y result in each thread-local buffer to 0
-    st = H2P_get_wtime_sec();
+    st = get_wtime_sec();
     #pragma omp parallel num_threads(n_thread)
     {
         int tid = omp_get_thread_num();
@@ -479,40 +477,40 @@ void H2ERI_H2_matvec_JIT(H2ERI_t h2eri, const double *x, double *y)
         #pragma omp for
         for (int i = 0; i < krnl_mat_size; i++) y[i] = 0;
     }
-    et = H2P_get_wtime_sec();
+    et = get_wtime_sec();
     h2pack->timers[8] += et - st;
     
     // 2. Forward transformation, calculate U_j^T * x_j
-    st = H2P_get_wtime_sec();
+    st = get_wtime_sec();
     H2P_matvec_fwd_transform(h2pack, x, y);
-    et = H2P_get_wtime_sec();
+    et = get_wtime_sec();
     h2pack->timers[4] += et - st;
     
     // 3. Intermediate multiplication, calculate B_{ij} * (U_j^T * x_j)
-    st = H2P_get_wtime_sec();
+    st = get_wtime_sec();
     H2ERI_H2_matvec_intmd_mult_JIT(h2eri, x);
-    et = H2P_get_wtime_sec();
+    et = get_wtime_sec();
     h2pack->timers[5] += et - st;
     
     // 4. Backward transformation, calculate U_i * (B_{ij} * (U_j^T * x_j))
-    st = H2P_get_wtime_sec();
+    st = get_wtime_sec();
     H2P_matvec_bwd_transform(h2pack, x, y);
-    et = H2P_get_wtime_sec();
+    et = get_wtime_sec();
     h2pack->timers[6] += et - st;
     
     // 5. Dense multiplication, calculate D_i * x_i
-    st = H2P_get_wtime_sec();
+    st = get_wtime_sec();
     H2ERI_H2_matvec_dense_mult_JIT(h2eri, x);
-    et = H2P_get_wtime_sec();
+    et = get_wtime_sec();
     h2pack->timers[7] += et - st;
     
     // 6. Reduce sum partial y results
-    st = H2P_get_wtime_sec();
+    st = get_wtime_sec();
     #pragma omp parallel num_threads(n_thread)
     {
         int tid = omp_get_thread_num();
         int spos, len;
-        H2P_block_partition(krnl_mat_size, n_thread, tid, &spos, &len);
+        calc_block_spos_len(krnl_mat_size, n_thread, tid, &spos, &len);
         
         for (int tid = 0; tid < n_thread; tid++)
         {
@@ -522,7 +520,7 @@ void H2ERI_H2_matvec_JIT(H2ERI_t h2eri, const double *x, double *y)
         }
     }
     h2pack->mat_size[7] = (2 * n_thread + 1) * h2pack->krnl_mat_size;
-    et = H2P_get_wtime_sec();
+    et = get_wtime_sec();
     h2pack->timers[8] += et - st;
     
     h2pack->n_matvec++;
