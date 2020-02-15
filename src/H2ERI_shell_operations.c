@@ -4,8 +4,6 @@
 #include <assert.h>
 #include <math.h>
 
-#include "mkl.h"
-
 #include "H2ERI_typedef.h"
 
 // Schwarz screening for shell pairs

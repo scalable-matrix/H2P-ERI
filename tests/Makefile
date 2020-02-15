@@ -1,19 +1,43 @@
-CC = icc
+CC      = icc
 
-USE_LIBXC = 0
+USE_MKL      = 1
+USE_OPENBLAS = 0
+USE_LIBXC    = 0
 
-BLAS_LIB     = -mkl=parallel
-LIBXC_LIBDIR = /home/mkurisu/Workspace/libxc/install/lib
-SIMINT_DIR   = /home/mkurisu/Workspace/simint/build-avx/install
-YATDFT_DIR   = /home/mkurisu/Workspace/YATDFT
-H2PACK_DIR   = /home/mkurisu/Workspace/H2Pack
-H2PERI_DIR   = ..
+LIBXC_LIBDIR         = /home/mkurisu/Workspace/libxc/install/lib
+H2PERI_INSTALL_DIR   = /home/mkurisu/Workspace/H2P-ERI
+SIMINT_INSTALL_DIR   = /home/mkurisu/Workspace/simint/build-avx/install
+YATDFT_INSTALL_DIR   = /home/mkurisu/Workspace/YATDFT
+H2PACK_INSTALL_DIR   = /home/mkurisu/Workspace/H2Pack
+OPENBLAS_INSTALL_DIR = /home/mkurisu/Workspace/OpenBLAS-0.3.8/install
 
 # The order of these lib files matters... 
-LIBS     = $(H2PERI_DIR)/src/libH2PERI.a $(H2PACK_DIR)/src/libH2Pack.a $(YATDFT_DIR)/src/libYATDFT.a $(SIMINT_DIR)/lib64/libsimint.a 
-INCS     = -I$(H2PERI_DIR)/src/include -I$(H2PACK_DIR)/src/include -I$(YATDFT_DIR)/src/include -I$(SIMINT_DIR)/include
-CFLAGS   = $(INCS) -Wall -g -std=gnu99 -O3 -qopenmp -xHost $(BLAS_LIB)
-LDFLAGS  = -g -O3 -xHost -qopenmp $(BLAS_LIB)
+DEF      = -DUSE_AVX
+LIBS     = $(H2PERI_INSTALL_DIR)/src/libH2PERI.a $(H2PACK_INSTALL_DIR)/src/libH2Pack.a $(YATDFT_INSTALL_DIR)/src/libYATDFT.a $(SIMINT_INSTALL_DIR)/lib64/libsimint.a 
+INCS     = -I$(H2PERI_INSTALL_DIR)/src/include -I$(H2PACK_INSTALL_DIR)/src/include -I$(YATDFT_INSTALL_DIR)/src/include -I$(SIMINT_INSTALL_DIR)/include
+CFLAGS   = $(INCS) -Wall -g -std=gnu99 -O3 $(DEF)
+LDFLAGS  = -g -O3
+
+ifeq ($(CC), icc)
+CFLAGS  += -qopenmp -xHost
+endif
+
+ifeq ($(CC), gcc)
+CFLAGS  += -fopenmp -march=native -Wno-unused-result -Wno-unused-function
+endif
+
+ifeq ($(USE_MKL), 1)
+DEF     += -DUSE_MKL
+CFLAGS  += -mkl
+LDFLAGS += -mkl -qopenmp
+endif
+
+ifeq ($(USE_OPENBLAS), 1)
+DEF     += -DUSE_OPENBLAS
+LIBS    += $(OPENBLAS_INSTALL_DIR)/lib/libopenblas.a
+INCS    += -I$(OPENBLAS_INSTALL_DIR)/include
+LDFLAGS += -fopenmp -lm
+endif
 
 ifeq ($(USE_LIBXC), 1)
 LDFLAGS += -L$(LIBXC_LIBDIR) -lxc
@@ -29,7 +53,7 @@ all: $(EXES)
 	$(CC) $(CFLAGS)  -c $^ 
 
 %.exe: %.o $(LIBS)
-	$(CC) $(LDFLAGS) -o $@ $^ 
+	$(CC) -o $@ $^ $(LDFLAGS) 
 
 clean:
 	rm -f $(EXES) $(OBJS)

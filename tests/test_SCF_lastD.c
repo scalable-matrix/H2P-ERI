@@ -8,7 +8,7 @@
 #include "TinyDFT.h"
 #include "TinyDFT_typedef.h"
 #include "H2ERI.h"
-
+#include "utils.h"  // In H2Pack
 
 void TinyDFT_copy_shells_to_H2ERI(TinyDFT_t TinyDFT, H2ERI_t h2eri)
 {
@@ -38,7 +38,6 @@ void TinyDFT_SCF(TinyDFT_t TinyDFT, const int max_iter, const int J_op, const in
     TinyDFT->max_iter = max_iter;
     double E_prev, E_curr, E_delta = 19241112.0;
     
-    int    nbf            = TinyDFT->nbf;
     int    mat_size       = TinyDFT->mat_size;
     double *Hcore_mat     = TinyDFT->Hcore_mat;
     double *S_mat         = TinyDFT->S_mat;
@@ -152,7 +151,7 @@ void TinyDFT_SCF(TinyDFT_t TinyDFT, const int max_iter, const int J_op, const in
 
     printf("Start checking accuracy of Coulomb matrix construction\n");
 
-    double* J_mat_test = (double*) ALIGN64B_MALLOC(DBL_SIZE*TinyDFT->mat_size); 
+    double *J_mat_test = (double *) malloc_aligned(DBL_MSIZE * TinyDFT->mat_size, 64); 
     double Jnorm, err_h2eri5, err_h2eri7, err_df; 
 
     // Direct method

@@ -5,16 +5,12 @@
 #include <math.h>
 #include <omp.h>
 
-#ifdef USE_MKL
-#include <mkl.h>
-#endif
-
 #include "CMS.h"
 #include "H2ERI_typedef.h"
-#include "H2Pack_utils.h"
 #include "H2Pack_build.h"
 #include "H2Pack_aux_structs.h"
 #include "H2Pack_ID_compress.h"
+#include "linalg_lib_wrapper.h"  // In H2Pack
 
 // Partition the ring area (r1 < r < r2) using multiple layers of 
 // box surface and generate the same number of uniformly distributed 
@@ -471,8 +467,6 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
     int    *index_seq     = h2eri->index_seq;
     double *enbox         = h2pack->enbox;
     double *box_extent    = h2eri->box_extent;
-    double *sp_center     = h2eri->sp_center;
-    double *sp_extent     = h2eri->sp_extent;
     size_t *mat_size      = h2pack->mat_size;
     void   *stop_param    = &h2pack->QR_stop_tol;
     multi_sp_t *sp = h2eri->sp;
@@ -533,7 +527,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
     for (int i = 0; i < n_thread * 4; i++)
         H2P_dense_mat_init(tb_mat + i, 1024, 1);
     size_t U_timers_msize = sizeof(double) * n_thread * 8;
-    double *U_timers = (double *) H2P_malloc_aligned(U_timers_msize);
+    double *U_timers = (double *) malloc_aligned(U_timers_msize, 64);
     assert(U_timers != NULL);
     
     // 4. Hierarchical construction level by level
@@ -576,7 +570,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
             
             double st, et;
             
-            thread_buf[tid]->timer = -H2P_get_wtime_sec();
+            thread_buf[tid]->timer = -get_wtime_sec();
             #pragma omp for schedule(dynamic) nowait
             for (int j = 0; j < level_i_n_node; j++)
             {
@@ -585,7 +579,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 int *child_nodes = children + node * max_child;
                 
                 // (1) Construct row subset for this node
-                st = H2P_get_wtime_sec();
+                st = get_wtime_sec();
                 if (node_n_child == 0)
                 {
                     int pt_s = pt_cluster[2 * node];
@@ -617,7 +611,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 }  // End of "if (node_n_child == 0)"
                 
                 // (2) Generate proxy points
-                //st = H2P_get_wtime_sec();
+                //st = get_wtime_sec();
                 double *node_enbox = enbox + 6 * node;
                 double width  = node_enbox[3];
                 double extent = box_extent[node];
@@ -640,11 +634,11 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                     pp_y[k] += center_y;
                     pp_z[k] += center_z;
                 }
-                //et = H2P_get_wtime_sec();
+                //et = get_wtime_sec();
                 //timers[5] += et - st;
                 
                 // (3) Prepare current node's overlapping far field point list
-                //st = H2P_get_wtime_sec();
+                //st = get_wtime_sec();
                 int n_ff_idx0 = ovlp_ff_idx[node]->length;
                 int *ff_idx0  = ovlp_ff_idx[node]->data;
                 int n_ff_idx  = H2ERI_gather_sum(skel_flag, ovlp_ff_idx[node]);
@@ -660,7 +654,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                     }
                 }
                 node_ff_idx->length = n_ff_idx;
-                et = H2P_get_wtime_sec();
+                et = get_wtime_sec();
                 timers[5] += et - st;
                 
                 int A_blk_nrow = H2ERI_gather_sum(sp_nbfp, pair_idx);
@@ -717,24 +711,24 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 // (4.2) Calculate the NAI block and use the random sparse matrix to normalize it
                 double *A_pp = A_ff_pp->data;
                 double *A_pp_buf = A_pp + A_blk_nrow * Aidx_cup_cnt;
-                st = H2P_get_wtime_sec();
+                st = get_wtime_sec();
                 H2ERI_calc_NAI_pairs_to_mat(
                     sp_shells, num_sp, pair_idx->length, pair_idx->data, 
                     Aidx_cup_cnt, pp_x, pp_y, pp_z, A_pp, Aidx_cup_cnt, A_pp_buf
                 );
-                et = H2P_get_wtime_sec();
+                et = get_wtime_sec();
                 timers[1] += et - st;
-                st = H2P_get_wtime_sec();
+                st = get_wtime_sec();
                 H2ERI_calc_sparse_mm(
                     A_blk_nrow, A_blk_nrow, Aidx_cup_cnt,
                     rndmatA_val, rndmatA_idx, 
                     A_pp, Aidx_cup_cnt, A_blk_pp, A_blk_ncol
                 );
-                et = H2P_get_wtime_sec();
+                et = get_wtime_sec();
                 timers[3] += et - st;
 
                 // (5.1) Construct the random sparse matrix for ERI block normalization
-                st = H2P_get_wtime_sec();
+                st = get_wtime_sec();
                 H2ERI_gen_rand_sparse_mat(A_ff_ncol, A_blk_nrow, rndmatA_val, rndmatA_idx);
                 // Find the union of all rndmatA_idx
                 // Note: the first (A_blk_nrow+1) elements in rndmatA_idx are row_ptr,
@@ -777,7 +771,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 }
                 int A_ff_ncol1 = H2ERI_gather_sum(sp_nbfp, node_ff_idx1);
                 assert(A_ff_ncol1 >= rndmatA_idx_cup->length);
-                et = H2P_get_wtime_sec();
+                et = get_wtime_sec();
                 timers[3] += et - st;
                 // (5.2) Calculate the ERI block strip by strip and use the random sparse
                 //        matrix to normalize it
@@ -788,41 +782,41 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                 {
                     int nbfp_k = CMS_get_sp_nbfp(sp + pair_idx->data[k]);
                     assert(nbfp_k <= max_nbfp);
-                    st = H2P_get_wtime_sec();
+                    st = get_wtime_sec();
                     H2ERI_calc_ERI_pairs_to_mat(
                         sp, 1, node_ff_idx1->length, pair_idx->data + k,
                         node_ff_idx1->data, simint_buff, A_ff, A_ff_ncol1, eri_batch_buff
                     );
-                    et = H2P_get_wtime_sec();
+                    et = get_wtime_sec();
                     timers[0] += et - st;
-                    st = H2P_get_wtime_sec();
+                    st = get_wtime_sec();
                     H2ERI_calc_sparse_mm(
                         nbfp_k, A_blk_nrow, A_ff_ncol1,
                         rndmatA_val, rndmatA_idx, 
                         A_ff, A_ff_ncol1, A_blk_ff + nbfp_cnt * A_blk_ncol, A_blk_ncol
                     );
-                    et = H2P_get_wtime_sec();
+                    et = get_wtime_sec();
                     timers[3] += et - st;
                     nbfp_cnt += nbfp_k;
                 }
                 assert(nbfp_cnt == A_blk_nrow);
 
                 // (6) ID compression
-                st = H2P_get_wtime_sec();
+                st = get_wtime_sec();
                 H2P_dense_mat_normalize_columns(A_block, rndmatA_val);
                 H2P_dense_mat_select_rows(A_block, row_idx);
                 H2P_dense_mat_resize(QR_buff, 1, 2 * A_block->nrow);
                 H2P_int_vec_set_capacity(ID_buff, 4 * A_block->nrow);
-                et = H2P_get_wtime_sec();
+                et = get_wtime_sec();
                 timers[5] += et - st;
-                st = H2P_get_wtime_sec();
+                st = get_wtime_sec();
                 H2P_ID_compress(
                     A_block, QR_REL_NRM, stop_param, &U[node], sub_idx, 
                     1, QR_buff->data, ID_buff->data, 1
                 );
-                et = H2P_get_wtime_sec();
+                et = get_wtime_sec();
                 timers[4] += et - st;
-                st = H2P_get_wtime_sec();
+                st = get_wtime_sec();
                 H2P_int_vec_gather(row_idx, sub_idx, sub_row_idx);
                 H2P_int_vec_init(&J_pair[node], pair_idx->length);
                 H2P_int_vec_init(&J_row[node],  sub_row_idx->length);
@@ -831,10 +825,10 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
                     work_buf1, sub_pair, J_row[node]
                 );
                 H2P_int_vec_gather(pair_idx, sub_pair, J_pair[node]);
-                et = H2P_get_wtime_sec();
+                et = get_wtime_sec();
                 timers[5] += et - st;
             }  // End of j loop
-            thread_buf[tid]->timer += H2P_get_wtime_sec();
+            thread_buf[tid]->timer += get_wtime_sec();
         }  // End of "#pragma omp parallel"
         
         #ifdef PROFILING_OUTPUT
@@ -906,7 +900,7 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
     free(skel_flag);
     free(lvl_leaf);
     free(lvl_n_leaf);
-    H2P_free_aligned(U_timers);
+    free_aligned(U_timers);
     for (int i = 0; i < n_thread; i++)
         H2P_thread_buf_reset(thread_buf[i]);
     for (int i = 0; i < n_thread * 10; i++)
@@ -930,7 +924,6 @@ void H2ERI_build_B(H2ERI_t h2eri)
     int BD_JIT            = h2pack->BD_JIT;
     int n_thread          = h2pack->n_thread;
     int n_node            = h2pack->n_node;
-    int n_point           = h2pack->n_point;
     int n_r_adm_pair      = h2pack->n_r_adm_pair;
     int *r_adm_pairs      = h2pack->r_adm_pairs;
     int *node_level       = h2pack->node_level;
@@ -960,7 +953,6 @@ void H2ERI_build_B(H2ERI_t h2eri)
     //    the same workload (total size of B matrices in a block)
     B_ptr[0] = 0;
     size_t B_total_size = 0;
-    H2P_int_vec_t *J = h2pack->J;
     h2pack->node_n_r_adm = (int*) malloc(sizeof(int) * n_node);
     assert(h2pack->node_n_r_adm != NULL);
     int *node_n_r_adm = h2pack->node_n_r_adm;
@@ -1008,9 +1000,9 @@ void H2ERI_build_B(H2ERI_t h2eri)
     if (BD_JIT == 1) return;
     
     // 3. Generate B matrices
-    h2pack->B_data = (DTYPE*) H2P_malloc_aligned(sizeof(DTYPE) * B_total_size);
+    h2pack->B_data = (double*) malloc_aligned(sizeof(double) * B_total_size, 64);
     assert(h2pack->B_data != NULL);
-    DTYPE *B_data = h2pack->B_data;
+    double *B_data = h2pack->B_data;
     const int n_B_blk = B_blk->length - 1;
     #pragma omp parallel num_threads(n_thread)
     {
@@ -1019,7 +1011,7 @@ void H2ERI_build_B(H2ERI_t h2eri)
         simint_buff_t    simint_buff    = simint_buffs[tid];
         eri_batch_buff_t eri_batch_buff = eri_batch_buffs[tid];
         
-        thread_buf[tid]->timer = -H2P_get_wtime_sec();
+        thread_buf[tid]->timer = -get_wtime_sec();
         //#pragma omp for schedule(dynamic) nowait
         //for (int i_blk = 0; i_blk < n_B_blk; i_blk++)
         int i_blk = tid;  // Follow H2Pack, use NUMA first-touch policy for better H2 matvec performance
@@ -1099,7 +1091,7 @@ void H2ERI_build_B(H2ERI_t h2eri)
                 memcpy(B_data + B_ptr[i], tmpB->data, sizeof(double) * tmpB->nrow * tmpB->ncol);
             }  // End of i loop
         }  // End of i_blk loop
-        thread_buf[tid]->timer += H2P_get_wtime_sec();
+        thread_buf[tid]->timer += get_wtime_sec();
     }  // End of "pragma omp parallel"
 
     #ifdef PROFILING_OUTPUT
@@ -1126,10 +1118,8 @@ void H2ERI_build_D(H2ERI_t h2eri)
     H2Pack_t h2pack = h2eri->h2pack;
     int BD_JIT           = h2pack->BD_JIT;
     int n_thread         = h2pack->n_thread;
-    int n_point          = h2pack->n_point;
     int n_leaf_node      = h2pack->n_leaf_node;
     int n_r_inadm_pair   = h2pack->n_r_inadm_pair;
-    int num_sp           = h2eri->num_sp;
     int *leaf_nodes      = h2pack->height_nodes;
     int *pt_cluster      = h2pack->pt_cluster;
     int *r_inadm_pairs   = h2pack->r_inadm_pairs;
@@ -1201,7 +1191,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
     
     if (BD_JIT == 1) return;
     
-    h2pack->D_data = (double*) H2P_malloc_aligned(sizeof(double) * (D0_total_size + D1_total_size));
+    h2pack->D_data = (double*) malloc_aligned(sizeof(double) * (D0_total_size + D1_total_size), 64);
     assert(h2pack->D_data != NULL);
     double *D_data = h2pack->D_data;
     const int n_D0_blk = D_blk0->length - 1;
@@ -1212,7 +1202,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
         simint_buff_t    simint_buff    = simint_buffs[tid];
         eri_batch_buff_t eri_batch_buff = eri_batch_buffs[tid];
         
-        thread_buf[tid]->timer = -H2P_get_wtime_sec();
+        thread_buf[tid]->timer = -get_wtime_sec();
         
         // 3. Generate diagonal blocks (leaf node self interaction)
         //#pragma omp for schedule(dynamic) nowait
@@ -1276,7 +1266,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
             }
         }  // End of i_blk1 loop
         
-        thread_buf[tid]->timer += H2P_get_wtime_sec();
+        thread_buf[tid]->timer += get_wtime_sec();
     }  // End of "pragma omp parallel"
     
     #ifdef PROFILING_OUTPUT
@@ -1302,20 +1292,20 @@ void H2ERI_build_H2(H2ERI_t h2eri, const int BD_JIT)
     else h2eri->h2pack->BD_JIT = 0;
 
     // 1. Build projection matrices and skeleton row sets
-    st = H2P_get_wtime_sec();
+    st = get_wtime_sec();
     H2ERI_build_UJ_proxy(h2eri);
-    et = H2P_get_wtime_sec();
+    et = get_wtime_sec();
     h2eri->h2pack->timers[1] = et - st;
 
     // 2. Build generator matrices
-    st = H2P_get_wtime_sec();
+    st = get_wtime_sec();
     H2ERI_build_B(h2eri);
-    et = H2P_get_wtime_sec();
+    et = get_wtime_sec();
     h2eri->h2pack->timers[2] = et - st;
     
     // 3. Build dense blocks
-    st = H2P_get_wtime_sec();
+    st = get_wtime_sec();
     H2ERI_build_D(h2eri);
-    et = H2P_get_wtime_sec();
+    et = get_wtime_sec();
     h2eri->h2pack->timers[3] = et - st;
 }

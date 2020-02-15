@@ -186,7 +186,6 @@ void H2ERI_calc_box_extent(H2ERI_t h2eri)
             {
                 int pt_s = pt_cluster[2 * node];
                 int pt_e = pt_cluster[2 * node + 1];
-                int n_point = pt_e - pt_s + 1;
                 double box_extent_node = 0.0;
                 for (int d = 0; d < 3; d++)
                 {
