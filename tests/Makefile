@@ -4,7 +4,7 @@ USE_MKL      = 1
 USE_OPENBLAS = 0
 USE_LIBXC    = 0
 
-LIBXC_LIBDIR         = /home/mkurisu/Workspace/libxc/install/lib
+LIBXC_INSTALL_DIR    = /home/mkurisu/Workspace/libxc/install
 H2PERI_INSTALL_DIR   = /home/mkurisu/Workspace/H2P-ERI
 SIMINT_INSTALL_DIR   = /home/mkurisu/Workspace/simint/build-avx/install
 YATDFT_INSTALL_DIR   = /home/mkurisu/Workspace/YATDFT
@@ -40,7 +40,9 @@ LDFLAGS += -fopenmp -lm
 endif
 
 ifeq ($(USE_LIBXC), 1)
-LDFLAGS += -L$(LIBXC_LIBDIR) -lxc
+CFLAGS  += -DUSE_LIBXC
+INCS    += -I$(LIBXC_INSTALL_DIR)/include
+LDFLAGS += -L$(LIBXC_INSTALL_DIR)/lib -lxc
 endif
 
 SRCS = H2ERI-HF.c H2ERI-DFT.c test_SCF_lastD.c test_input_mat.c test_perf.c

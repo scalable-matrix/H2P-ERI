@@ -35,10 +35,13 @@ void H2ERI_KSDFT(TinyDFT_t TinyDFT, H2ERI_t h2eri, const int max_iter)
     double E_prev, E_curr, E_delta = 19241112.0;
     
     int    mat_size       = TinyDFT->mat_size;
+    int    xf_id          = TinyDFT->xf_id;
+    int    xf_family      = TinyDFT->xf_family;
     double *Hcore_mat     = TinyDFT->Hcore_mat;
     double *S_mat         = TinyDFT->S_mat;
     double *X_mat         = TinyDFT->X_mat;
     double *J_mat         = TinyDFT->J_mat;
+    double *K_mat         = TinyDFT->K_mat;
     double *XC_mat        = TinyDFT->XC_mat;
     double *F_mat         = TinyDFT->F_mat;
     double *Cocc_mat      = TinyDFT->Cocc_mat;
@@ -46,33 +49,67 @@ void H2ERI_KSDFT(TinyDFT_t TinyDFT, H2ERI_t h2eri, const int max_iter)
     double *E_nuc_rep     = &TinyDFT->E_nuc_rep;
     double *E_one_elec    = &TinyDFT->E_one_elec;
     double *E_two_elec    = &TinyDFT->E_two_elec;
+    double *E_HF_exchange = &TinyDFT->E_HF_exchange;
     double *E_DFT_XC      = &TinyDFT->E_DFT_XC;
+
+    double HF_x_coef;
+    if (xf_id == HYB_GGA_XC_B3LYP || xf_id == HYB_GGA_XC_B3LYP5) HF_x_coef = 0.2;
 
     while ((TinyDFT->iter < TinyDFT->max_iter) && (fabs(E_delta) >= TinyDFT->E_tol))
     {
         printf("--------------- Iteration %d ---------------\n", TinyDFT->iter);
         
         double st0, et0, st1, et1, st2;
+        double J_time, K_time, XC_time;
         st0 = get_wtime_sec();
         
         // Build the Fock matrix
         st1 = get_wtime_sec();
         H2ERI_build_Coulomb(h2eri, D_mat, J_mat);
         st2 = get_wtime_sec();
+        J_time = st2 - st1;
+        
+        st1 = get_wtime_sec();
+        if (xf_family == FAMILY_HYB_GGA)
+            TinyDFT_build_JKmat(TinyDFT, D_mat, NULL, K_mat);
+        st2 = get_wtime_sec();
+        K_time = st2 - st1;
+        
+        st1 = get_wtime_sec();
         *E_DFT_XC = TinyDFT_build_XC_mat(TinyDFT, D_mat, XC_mat);
-        #pragma omp parallel for simd
-        for (int i = 0; i < mat_size; i++)
-            F_mat[i] = Hcore_mat[i] + 2 * J_mat[i] + XC_mat[i];
+        st2 = get_wtime_sec();
+        XC_time = st2 - st1;
+        
+        if (xf_family == FAMILY_HYB_GGA)
+        {
+            #pragma omp parallel for simd
+            for (int i = 0; i < mat_size; i++)
+                F_mat[i] = Hcore_mat[i] + 2 * J_mat[i] + XC_mat[i] - HF_x_coef * K_mat[i];
+        } else {
+            #pragma omp parallel for simd
+            for (int i = 0; i < mat_size; i++)
+                F_mat[i] = Hcore_mat[i] + 2 * J_mat[i] + XC_mat[i];
+        }
+        
         et1 = get_wtime_sec();
-        printf("* Build Fock matrix     : %.3lf (s), J / XC = %.3lf, %.3lf (s)\n", et1 - st1, st2 - st1, et1 - st2);
+        printf("* Build Fock matrix     : %.3lf (s), J / K / XC = %.3lf, %.3lf, %.3lf (s)\n", et1 - st1, J_time, K_time, XC_time);
         
         // Calculate new system energy
         st1 = get_wtime_sec();
-        TinyDFT_calc_HF_energy(
-            mat_size, D_mat, Hcore_mat, J_mat, NULL, 
-            E_one_elec, E_two_elec, NULL
-        );
-        E_curr = (*E_nuc_rep) + (*E_one_elec) + (*E_two_elec) + (*E_DFT_XC);
+        if (xf_family == FAMILY_HYB_GGA)
+        {
+            TinyDFT_calc_HF_energy(
+                mat_size, D_mat, Hcore_mat, J_mat, K_mat, 
+                E_one_elec, E_two_elec, E_HF_exchange
+            );
+            E_curr = (*E_nuc_rep) + (*E_one_elec) + (*E_two_elec) + (*E_DFT_XC) + HF_x_coef * (*E_HF_exchange);
+        } else {
+            TinyDFT_calc_HF_energy(
+                mat_size, D_mat, Hcore_mat, J_mat, NULL, 
+                E_one_elec, E_two_elec, NULL
+            );
+            E_curr = (*E_nuc_rep) + (*E_one_elec) + (*E_two_elec) + (*E_DFT_XC);
+        }
         et1 = get_wtime_sec();
         printf("* Calculate energy      : %.3lf (s)\n", et1 - st1);
         E_delta = E_curr - E_prev;
