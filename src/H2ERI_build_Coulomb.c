@@ -145,6 +145,44 @@ void H2ERI_contract_H2_matvec(H2ERI_t h2eri, double *J_mat)
     }
 }
 
+void H2ERI_BD_blk_bi_matvec(
+    H2P_dense_mat_t blk, H2P_dense_mat_t tmp_v,
+    const double *x_in_0, const double *x_in_1, 
+    double *x_out_0, double *x_out_1
+)
+{
+    if (blk->ld > 0)
+    {
+        CBLAS_BI_GEMV(
+            blk->nrow, blk->ncol, blk->data, blk->ncol,
+            x_in_0, x_in_1, x_out_0, x_out_1
+        );
+    } else {
+        int    blk_rank = -blk->ld;
+        double *U_mat   = blk->data;
+        double *V_mat   = U_mat + blk->nrow * blk_rank;
+        H2P_dense_mat_resize(tmp_v, blk_rank, 1);
+        // x_out_0 = (U * V) * x_in_0 = U * V * x_in_0
+        CBLAS_GEMV(
+            CblasRowMajor, CblasNoTrans, blk_rank, blk->ncol,
+            1.0, V_mat, blk->ncol, x_in_0, 1, 0.0, tmp_v->data, 1
+        );
+        CBLAS_GEMV(
+            CblasRowMajor, CblasNoTrans, blk->nrow, blk_rank,
+            1.0, U_mat, blk_rank, tmp_v->data, 1, 1.0, x_out_0, 1
+        );
+        // x_out_1 = (U * V)^T * x_in_1 = V^T * U^T * x_in_1
+        CBLAS_GEMV(
+            CblasRowMajor, CblasTrans, blk->nrow, blk_rank,
+            1.0, U_mat, blk_rank, x_in_1, 1, 0.0, tmp_v->data, 1
+        );
+        CBLAS_GEMV(
+            CblasRowMajor, CblasTrans, blk_rank, blk->ncol,
+            1.0, V_mat, blk->ncol, tmp_v->data, 1, 1.0, x_out_1, 1
+        );
+    }
+}
+
 // H2 matvec intermediate multiplication for H2ERI
 // All B_{ij} matrices are calculated and stored
 void H2ERI_H2_matvec_intmd_mult_AOT(H2ERI_t h2eri, const double *x)
@@ -172,6 +210,8 @@ void H2ERI_H2_matvec_intmd_mult_AOT(H2ERI_t h2eri, const double *x)
         double *y = thread_buf[tid]->y;
         thread_buf[tid]->timer = -get_wtime_sec();
         
+        H2P_dense_mat_t tmp_v = thread_buf[tid]->mat0;
+
         #pragma omp for schedule(static)
         for (int i = 0; i < n_node; i++)
         {
@@ -213,10 +253,12 @@ void H2ERI_H2_matvec_intmd_mult_AOT(H2ERI_t h2eri, const double *x)
                     y1_dst_1[ncol1 - 1] = 1.0;
                     if (beta0 == 0.0) memset(y1_dst_0, 0, sizeof(double) * Bi->nrow);
                     if (beta1 == 0.0) memset(y1_dst_1, 0, sizeof(double) * Bi->ncol);
-                    CBLAS_BI_GEMV(
-                        Bi->nrow, Bi->ncol, Bi->data, Bi->ncol,
-                        y0[node1]->data, y0[node0]->data, y1_dst_0, y1_dst_1
-                    );
+
+                    const double *x_in_0 = y0[node1]->data;
+                    const double *x_in_1 = y0[node0]->data;
+                    double *x_out_0 = y1_dst_0;
+                    double *x_out_1 = y1_dst_1;
+                    H2ERI_BD_blk_bi_matvec(Bi, tmp_v, x_in_0, x_in_1, x_out_0, x_out_1);
                 }
                 
                 // (2) node1 is a leaf node and its level is higher than node0's level, 
@@ -231,10 +273,12 @@ void H2ERI_H2_matvec_intmd_mult_AOT(H2ERI_t h2eri, const double *x)
                     double beta0     = y1_dst_0[ncol0 - 1];
                     y1_dst_0[ncol0 - 1] = 1.0;
                     if (beta0 == 0.0) memset(y1_dst_0, 0, sizeof(double) * Bi->nrow);
-                    CBLAS_BI_GEMV(
-                        Bi->nrow, Bi->ncol, Bi->data, Bi->ncol,
-                        x_spos, y0[node0]->data, y1_dst_0, y_spos
-                    );
+
+                    const double *x_in_0 = x_spos;
+                    const double *x_in_1 = y0[node0]->data;
+                    double *x_out_0 = y1_dst_0;
+                    double *x_out_1 = y_spos;
+                    H2ERI_BD_blk_bi_matvec(Bi, tmp_v, x_in_0, x_in_1, x_out_0, x_out_1);
                 }
                 
                 // (3) node0 is a leaf node and its level is higher than node1's level, 
@@ -249,10 +293,12 @@ void H2ERI_H2_matvec_intmd_mult_AOT(H2ERI_t h2eri, const double *x)
                     double beta1     = y1_dst_1[ncol1 - 1];
                     y1_dst_1[ncol1 - 1] = 1.0;
                     if (beta1 == 0.0) memset(y1_dst_1, 0, sizeof(double) * Bi->ncol);
-                    CBLAS_BI_GEMV(
-                        Bi->nrow, Bi->ncol, Bi->data, Bi->ncol,
-                        y0[node1]->data, x_spos, y_spos, y1_dst_1
-                    );
+
+                    const double *x_in_0 = y0[node1]->data;
+                    const double *x_in_1 = x_spos;
+                    double *x_out_0 = y_spos;
+                    double *x_out_1 = y1_dst_1;
+                    H2ERI_BD_blk_bi_matvec(Bi, tmp_v, x_in_0, x_in_1, x_out_0, x_out_1);
                 }
             }  // End of i loop
         }  // End of i_blk loop
@@ -486,7 +532,9 @@ void H2ERI_H2_matvec_dense_mult_AOT(H2ERI_t h2eri, const double *x)
         int tid = omp_get_thread_num();
         
         double *y = thread_buf[tid]->y;
-        
+        H2P_dense_mat_t tmp_v  = thread_buf[tid]->mat0;
+        H2P_dense_mat_t tmp_v2 = thread_buf[tid]->mat1;
+
         thread_buf[tid]->timer = -get_wtime_sec();
         
         // 1. Diagonal blocks (leaf node self interaction)
@@ -502,10 +550,13 @@ void H2ERI_H2_matvec_dense_mult_AOT(H2ERI_t h2eri, const double *x)
                 int vec_s = mat_cluster[node * 2];
                 double       *y_spos = y + vec_s;
                 const double *x_spos = x + vec_s;
-                CBLAS_GEMV(
-                    CblasRowMajor, CblasNoTrans, Di->nrow, Di->ncol,
-                    1.0, Di->data, Di->nrow, x_spos, 1, 1.0, y_spos, 1
-                );
+
+                H2P_dense_mat_resize(tmp_v2, 1, Di->nrow + Di->ncol);
+                const double *x_in_0 = x_spos;
+                const double *x_in_1 = tmp_v2->data;
+                double *x_out_0 = y_spos;
+                double *x_out_1 = tmp_v2->data + Di->ncol;
+                H2ERI_BD_blk_bi_matvec(Di, tmp_v, x_in_0, x_in_1, x_out_0, x_out_1);
             }
         }  // End of i_blk0 loop
         
@@ -526,10 +577,12 @@ void H2ERI_H2_matvec_dense_mult_AOT(H2ERI_t h2eri, const double *x)
                 double       *y_spos1 = y + vec_s1;
                 const double *x_spos0 = x + vec_s0;
                 const double *x_spos1 = x + vec_s1;
-                CBLAS_BI_GEMV(
-                    Di->nrow, Di->ncol, Di->data, Di->ncol,
-                    x_spos1, x_spos0, y_spos0, y_spos1
-                );
+
+                const double *x_in_0 = x_spos1;
+                const double *x_in_1 = x_spos0;
+                double *x_out_0 = y_spos0;
+                double *x_out_1 = y_spos1;
+                H2ERI_BD_blk_bi_matvec(Di, tmp_v, x_in_0, x_in_1, x_out_0, x_out_1);
             }
         }  // End of i_blk1 loop
         
