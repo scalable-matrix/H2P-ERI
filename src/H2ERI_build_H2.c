@@ -1000,9 +1000,9 @@ void H2ERI_build_B(H2ERI_t h2eri)
     if (BD_JIT == 1) return;
     
     // 3. Generate B matrices
-    h2pack->B_data = (double*) malloc_aligned(sizeof(double) * B_total_size, 64);
-    assert(h2pack->B_data != NULL);
-    double *B_data = h2pack->B_data;
+    h2eri->c_B_blks = (H2P_dense_mat_t*) malloc(sizeof(H2P_dense_mat_t) * h2pack->n_B);
+    assert(h2eri->c_B_blks != NULL);
+    H2P_dense_mat_t *c_B_blks = h2eri->c_B_blks;
     const int n_B_blk = B_blk->length - 1;
     #pragma omp parallel num_threads(n_thread)
     {
@@ -1012,9 +1012,8 @@ void H2ERI_build_B(H2ERI_t h2eri)
         eri_batch_buff_t eri_batch_buff = eri_batch_buffs[tid];
         
         thread_buf[tid]->timer = -get_wtime_sec();
-        //#pragma omp for schedule(dynamic) nowait
-        //for (int i_blk = 0; i_blk < n_B_blk; i_blk++)
-        int i_blk = tid;  // Follow H2Pack, use NUMA first-touch policy for better H2 matvec performance
+        #pragma omp for schedule(dynamic) nowait
+        for (int i_blk = 0; i_blk < n_B_blk; i_blk++)
         {
             int B_blk_s = B_blk->data[i_blk];
             int B_blk_e = B_blk->data[i_blk + 1];
@@ -1088,7 +1087,8 @@ void H2ERI_build_B(H2ERI_t h2eri)
                     H2P_dense_mat_select_columns(tmpB, J_row[node1]);
                 }
                 
-                memcpy(B_data + B_ptr[i], tmpB->data, sizeof(double) * tmpB->nrow * tmpB->ncol);
+                H2P_dense_mat_init(&c_B_blks[i], B_nrow[i], B_ncol[i]);
+                memcpy(c_B_blks[i]->data, tmpB->data, sizeof(double) * tmpB->nrow * tmpB->ncol);
             }  // End of i loop
         }  // End of i_blk loop
         thread_buf[tid]->timer += get_wtime_sec();
@@ -1191,9 +1191,9 @@ void H2ERI_build_D(H2ERI_t h2eri)
     
     if (BD_JIT == 1) return;
     
-    h2pack->D_data = (double*) malloc_aligned(sizeof(double) * (D0_total_size + D1_total_size), 64);
-    assert(h2pack->D_data != NULL);
-    double *D_data = h2pack->D_data;
+    h2eri->c_D_blks = (H2P_dense_mat_t*) malloc(sizeof(H2P_dense_mat_t) * h2pack->n_D);
+    assert(h2eri->c_D_blks != NULL);
+    H2P_dense_mat_t *c_D_blks = h2eri->c_D_blks;
     const int n_D0_blk = D_blk0->length - 1;
     const int n_D1_blk = D_blk1->length - 1;
     #pragma omp parallel num_threads(n_thread)
@@ -1205,9 +1205,8 @@ void H2ERI_build_D(H2ERI_t h2eri)
         thread_buf[tid]->timer = -get_wtime_sec();
         
         // 3. Generate diagonal blocks (leaf node self interaction)
-        //#pragma omp for schedule(dynamic) nowait
-        //for (int i_blk0 = 0; i_blk0 < n_D0_blk; i_blk0++)
-        int i_blk0 = tid;  // Follow H2Pack, use NUMA first-touch policy for better H2 matvec performance
+        #pragma omp for schedule(dynamic) nowait
+        for (int i_blk0 = 0; i_blk0 < n_D0_blk; i_blk0++)
         {
             int D_blk0_s = D_blk0->data[i_blk0];
             int D_blk0_e = D_blk0->data[i_blk0 + 1];
@@ -1222,21 +1221,22 @@ void H2ERI_build_D(H2ERI_t h2eri)
                 int pt_s = pt_cluster[2 * node];
                 int pt_e = pt_cluster[2 * node + 1];
                 int node_npts = pt_e - pt_s + 1;
-                int ld_Di = D_ncol[i];
-                double *Di = D_data + D_ptr[i];
+                int Di_nrow = D_nrow[i];
+                int Di_ncol = D_ncol[i];
+                H2P_dense_mat_init(&c_D_blks[i], Di_nrow, Di_ncol);
+                double *Di = c_D_blks[i]->data;
                 int *bra_idx = index_seq + pt_s;
                 int *ket_idx = bra_idx;
                 H2ERI_calc_ERI_pairs_to_mat(
                     sp, node_npts, node_npts, bra_idx, ket_idx, 
-                    simint_buff, Di, ld_Di, eri_batch_buff
+                    simint_buff, Di, Di_ncol, eri_batch_buff
                 );
             }
         }  // End of i_blk0 loop
         
         // 4. Generate off-diagonal blocks from inadmissible pairs
-        //#pragma omp for schedule(dynamic) nowait
-        //for (int i_blk1 = 0; i_blk1 < n_D1_blk; i_blk1++)
-        int i_blk1 = tid;  // Follow H2Pack, use NUMA first-touch policy for better H2 matvec performance
+        #pragma omp for schedule(dynamic) nowait
+        for (int i_blk1 = 0; i_blk1 < n_D1_blk; i_blk1++)
         {
             int D_blk1_s = D_blk1->data[i_blk1];
             int D_blk1_e = D_blk1->data[i_blk1 + 1];
@@ -1255,13 +1255,15 @@ void H2ERI_build_D(H2ERI_t h2eri)
                 int pt_e1 = pt_cluster[2 * node1 + 1];
                 int node0_npts = pt_e0 - pt_s0 + 1;
                 int node1_npts = pt_e1 - pt_s1 + 1;
-                int ld_Di = D_ncol[i + n_leaf_node];
-                double *Di = D_data + D_ptr[i + n_leaf_node];
+                int Di_nrow = D_nrow[i + n_leaf_node];
+                int Di_ncol = D_ncol[i + n_leaf_node];
+                H2P_dense_mat_init(&c_D_blks[i + n_leaf_node], Di_nrow, Di_ncol);
+                double *Di = c_D_blks[i + n_leaf_node]->data;
                 int *bra_idx = index_seq + pt_s0;
                 int *ket_idx = index_seq + pt_s1;
                 H2ERI_calc_ERI_pairs_to_mat(
                     sp, node0_npts, node1_npts, bra_idx, ket_idx, 
-                    simint_buff, Di, ld_Di, eri_batch_buff
+                    simint_buff, Di, Di_ncol, eri_batch_buff
                 );
             }
         }  // End of i_blk1 loop
