@@ -913,6 +913,20 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
     BLAS_SET_NUM_THREADS(n_thread);
 }
 
+// Compress a B or D block blk into low-rank form using ID approximation. 
+// blk = U * V where V = blk(J, :). If the compressed rank is not small 
+// enough, we will still use the original block.
+// Input parameters:
+//   blk     : B or D block to be compressed, will be overwritten 
+//   blk0    : Used for temporarily storing the original blk
+//   U_mat   : Used for temporarily storing the U matrix
+//   QR_buff : Used for QR buffer in ID compression
+//   J       : Used for temporarily storing the skeleton row indices
+//   ID_buff : Used for ID buffer in ID compression
+// Output parameter:
+//   *res_blk_ : The output B or D block after compression. If *res_blk_->ld < 0, 
+//   -*res_blk_->ld is rank of the low-rank approximation, U and V are stored 
+//   contiguous in *res_blk_->data. Otherwise, *res_blk_ stores a dense block.
 void H2ERI_compress_BD_blk(
     H2P_dense_mat_t blk,   H2P_dense_mat_t blk0, 
     H2P_dense_mat_t U_mat, H2P_dense_mat_t QR_buff,
@@ -1038,17 +1052,12 @@ void H2ERI_build_B(H2ERI_t h2eri)
             B_ncol[i] = J_row[node1]->length;
         }
         size_t Bi_size = (size_t) B_nrow[i] * (size_t) B_ncol[i];
-        //Bi_size = (Bi_size + N_DTYPE_64B - 1) / N_DTYPE_64B * N_DTYPE_64B;
         B_total_size += Bi_size;
         B_ptr[i + 1] = Bi_size;
-        // Add statistic info
-        h2pack->mat_size[4] += (B_nrow[i] * B_ncol[i]);
-        h2pack->mat_size[4] += 2 * (B_nrow[i] + B_ncol[i]);
     }
     int BD_ntask_thread = (BD_JIT == 1) ? BD_NTASK_THREAD : 1;
     H2P_partition_workload(n_r_adm_pair, B_ptr + 1, B_total_size, n_thread * BD_ntask_thread, B_blk);
     for (int i = 1; i <= n_r_adm_pair; i++) B_ptr[i] += B_ptr[i - 1];
-    h2pack->mat_size[1] = B_total_size;
     
     if (BD_JIT == 1) return;
     
@@ -1156,10 +1165,22 @@ void H2ERI_build_B(H2ERI_t h2eri)
         H2P_dense_mat_destroy(QR_buff);
     }  // End of "pragma omp parallel"
 
-    // Recalculate the total size of the B blocks
+    // Recalculate the total size of the B blocks and re-partition B blocks for matvec
     h2pack->mat_size[1] = 0;
+    h2pack->mat_size[4] = 0;
+    B_ptr[0] = 0;
+    B_total_size = 0;
     for (int i = 0; i < h2pack->n_B; i++)
-        h2pack->mat_size[1] += (size_t) c_B_blks[i]->size;
+    {
+        size_t Bi_size = c_B_blks[i]->size;
+        h2pack->mat_size[1] += Bi_size;
+        h2pack->mat_size[4] += Bi_size;
+        h2pack->mat_size[4] += (size_t) (B_nrow[i] + B_ncol[i]) * 2;
+        B_ptr[i + 1] = Bi_size;
+        B_total_size += Bi_size;
+    }
+    H2P_partition_workload(n_r_adm_pair, B_ptr + 1, B_total_size, n_thread * BD_ntask_thread, B_blk);
+    for (int i = 1; i <= n_r_adm_pair; i++) B_ptr[i] += B_ptr[i - 1];
 
     #ifdef PROFILING_OUTPUT
     double max_t = 0.0, avg_t = 0.0, min_t = 19241112.0;
@@ -1223,12 +1244,8 @@ void H2ERI_build_D(H2ERI_t h2eri)
         size_t Di_size = (size_t) node_nbfp * (size_t) node_nbfp;
         D_nrow[i] = node_nbfp;
         D_ncol[i] = node_nbfp;
-        //Di_size = (Di_size + N_DTYPE_64B - 1) / N_DTYPE_64B * N_DTYPE_64B;
         D_ptr[i + 1] = Di_size;
         D0_total_size += Di_size;
-        // Add statistic info
-        h2pack->mat_size[6] += node_nbfp * node_nbfp;
-        h2pack->mat_size[6] += node_nbfp + node_nbfp;
     }
     int BD_ntask_thread = (BD_JIT == 1) ? BD_NTASK_THREAD : 1;
     H2P_partition_workload(n_leaf_node, D_ptr + 1, D0_total_size, n_thread * BD_ntask_thread, D_blk0);
@@ -1246,16 +1263,11 @@ void H2ERI_build_D(H2ERI_t h2eri)
         size_t Di_size = (size_t) node0_nbfp * (size_t) node1_nbfp;
         D_nrow[i + n_leaf_node] = node0_nbfp;
         D_ncol[i + n_leaf_node] = node1_nbfp;
-        //Di_size = (Di_size + N_DTYPE_64B - 1) / N_DTYPE_64B * N_DTYPE_64B;
         D_ptr[n_leaf_node + 1 + i] = Di_size;
         D1_total_size += Di_size;
-        // Add statistic info
-        h2pack->mat_size[6] += (node0_nbfp * node1_nbfp);
-        h2pack->mat_size[6] += 2 * (node0_nbfp + node1_nbfp);
     }
     H2P_partition_workload(n_r_inadm_pair, D_ptr + n_leaf_node + 1, D1_total_size, n_thread * BD_ntask_thread, D_blk1);
     for (int i = 1; i <= n_leaf_node + n_r_inadm_pair; i++) D_ptr[i] += D_ptr[i - 1];
-    h2pack->mat_size[2] = D0_total_size + D1_total_size;
     
     if (BD_JIT == 1) return;
     
@@ -1354,10 +1366,32 @@ void H2ERI_build_D(H2ERI_t h2eri)
         H2P_dense_mat_destroy(QR_buff);
     }  // End of "pragma omp parallel"
     
-    // Recalculate the total size of the B blocks
-    h2pack->mat_size[2] = 0;
-    for (int i = 0; i < h2pack->n_D; i++)
-        h2pack->mat_size[2] += (size_t) c_D_blks[i]->size;
+    // Recalculate the total size of the D blocks and re-partition D blocks for matvec
+    h2pack->mat_size[6] = 0;
+    D0_total_size = 0;
+    for (int i = 0; i < n_leaf_node; i++)
+    {
+        H2P_dense_mat_t Di = c_D_blks[i];
+        size_t Di_size = Di->size;
+        h2pack->mat_size[6] += Di_size;
+        h2pack->mat_size[6] += (size_t) (Di->nrow * Di->ncol);
+        D_ptr[i + 1] = Di_size;
+        D0_total_size += Di_size;
+    }
+    H2P_partition_workload(n_leaf_node, D_ptr + 1, D0_total_size, n_thread * BD_ntask_thread, D_blk0);
+    D1_total_size = 0;
+    for (int i = 0; i < n_r_inadm_pair; i++)
+    {
+        H2P_dense_mat_t Di = c_D_blks[i + n_leaf_node];
+        size_t Di_size = Di->size;
+        h2pack->mat_size[6] += Di_size;
+        h2pack->mat_size[6] += (size_t) (2 * (Di->nrow * Di->ncol));
+        D_ptr[n_leaf_node + 1 + i] = Di_size;
+        D1_total_size += Di_size;
+    }
+    H2P_partition_workload(n_r_inadm_pair, D_ptr + n_leaf_node + 1, D1_total_size, n_thread * BD_ntask_thread, D_blk1);
+    for (int i = 1; i <= n_leaf_node + n_r_inadm_pair; i++) D_ptr[i] += D_ptr[i - 1];
+    h2pack->mat_size[2] = D0_total_size + D1_total_size;
 
     #ifdef PROFILING_OUTPUT
     double max_t = 0.0, avg_t = 0.0, min_t = 19241112.0;

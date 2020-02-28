@@ -145,6 +145,16 @@ void H2ERI_contract_H2_matvec(H2ERI_t h2eri, double *J_mat)
     }
 }
 
+// Perform bi-matvec for a B or D block blk which might be 
+// a dense block or a low-rank approximation blk = U * V.
+// Input parameters:
+//   blk    : Target B or D block
+//   tmp_v  : Auxiliary vector for storing the intermediate result 
+//   x_in_0 : Array, size blk->ncol, will be multiplied by blk
+//   x_in_1 : Array, size blk->nrow, will be multiplied by blk^T
+// Output parameters:
+//   x_out_0 : Array, size blk->nrow, == blk   * x_in_0
+//   x_out_1 : Array, size blk->ncol, == blk^T * x_in_1
 void H2ERI_BD_blk_bi_matvec(
     H2P_dense_mat_t blk, H2P_dense_mat_t tmp_v,
     const double *x_in_0, const double *x_in_1, 

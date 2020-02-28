@@ -188,7 +188,7 @@ void TinyDFT_SCF(TinyDFT_t TinyDFT, const int max_iter, const int J_op, const in
     TinyDFT_copy_shells_to_H2ERI(TinyDFT, h2eri7);
     H2ERI_process_shells(h2eri7);
     H2ERI_partition(h2eri7);
-    H2ERI_build_H2(h2eri7, 1);
+    H2ERI_build_H2(h2eri7, 0);
     H2ERI_build_Coulomb(h2eri7, D_mat, J_mat_test);
 
     err_h2eri7 = 0; 
@@ -199,7 +199,7 @@ void TinyDFT_SCF(TinyDFT_t TinyDFT, const int max_iter, const int J_op, const in
         err_h2eri7 += diff * diff;
     }
     err_h2eri7 = sqrt(err_h2eri7) / Jnorm;
-    printf("H2ERI with 1e-7 JIT constructed J relative error = %e\n", err_h2eri7);
+    printf("H2ERI with 1e-7 AOT constructed J relative error = %e\n", err_h2eri7);
     H2ERI_destroy(h2eri7);
 
     if (J_op == 0) return;
