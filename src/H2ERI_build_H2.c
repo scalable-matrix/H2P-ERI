@@ -1374,7 +1374,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
         H2P_dense_mat_t Di = c_D_blks[i];
         size_t Di_size = Di->size;
         h2pack->mat_size[6] += Di_size;
-        h2pack->mat_size[6] += (size_t) (Di->nrow * Di->ncol);
+        h2pack->mat_size[6] += (size_t) (Di->nrow + Di->ncol);
         D_ptr[i + 1] = Di_size;
         D0_total_size += Di_size;
     }
