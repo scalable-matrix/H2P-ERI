@@ -1194,6 +1194,8 @@ void H2ERI_build_B(H2ERI_t h2eri)
     avg_t /= (double) n_thread;
     printf("[PROFILING] Build B: min/avg/max thread wall-time = %.3lf, %.3lf, %.3lf (s)\n", min_t, avg_t, max_t);
     #endif
+    
+    BLAS_SET_NUM_THREADS(n_thread);
 }
 
 // Build dense blocks in the original matrices
@@ -1405,6 +1407,8 @@ void H2ERI_build_D(H2ERI_t h2eri)
     avg_t /= (double) n_thread;
     printf("[PROFILING] Build D: min/avg/max thread wall-time = %.3lf, %.3lf, %.3lf (s)\n", min_t, avg_t, max_t);
     #endif
+    
+    BLAS_SET_NUM_THREADS(n_thread);
 }
 
 // Build H2 representation for ERI tensor
