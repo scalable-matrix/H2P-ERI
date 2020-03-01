@@ -177,7 +177,7 @@ int main(int argc, char **argv)
     TinyDFT_build_Hcore_S_X_mat(TinyDFT, TinyDFT->Hcore_mat, TinyDFT->S_mat, TinyDFT->X_mat);
     TinyDFT_build_Dmat_SAD(TinyDFT, TinyDFT->D_mat);
     et = get_wtime_sec();
-    printf("TinyDFT compute Hcore, S, X matrices over,         elapsed time = %.3lf (s)\n", et - st);
+    printf("TinyDFT compute Hcore, S, X matrices over, elapsed time = %.3lf (s)\n", et - st);
     
     // Set up XC numerical integral environments
     char xf_str[5] = "LDA_X";
