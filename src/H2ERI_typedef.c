@@ -38,6 +38,8 @@ void H2ERI_init(H2ERI_t *h2eri_, const double scr_tol, const double ext_tol, con
     h2eri->ovlp_ff_idx     = NULL;
     h2eri->simint_buffs    = NULL;
     h2eri->eri_batch_buffs = NULL;
+    h2eri->c_B_blks        = NULL;
+    h2eri->c_D_blks        = NULL;
     
     double _QR_tol = QR_tol;
     H2P_init(&h2eri->h2pack, 3, 1, QR_REL_NRM, &_QR_tol);
@@ -82,6 +84,28 @@ void H2ERI_destroy(H2ERI_t h2eri)
     }
     free(h2eri->simint_buffs);
     free(h2eri->eri_batch_buffs);
+    
+    if (h2eri->c_B_blks != NULL)
+    {
+        H2P_dense_mat_t *c_B_blks = h2eri->c_B_blks;
+        for (int i = 0; i < h2eri->h2pack->n_B; i++)
+        {
+            H2P_dense_mat_destroy(c_B_blks[i]);
+            free(c_B_blks[i]);
+        }
+        free(c_B_blks);
+    }
+    
+    if (h2eri->c_D_blks != NULL)
+    {
+        H2P_dense_mat_t *c_D_blks = h2eri->c_D_blks;
+        for (int i = 0; i < h2eri->h2pack->n_D; i++)
+        {
+            H2P_dense_mat_destroy(c_D_blks[i]);
+            free(c_D_blks[i]);
+        }
+        free(c_D_blks);
+    }
     
     H2P_destroy(h2eri->h2pack);
 }
