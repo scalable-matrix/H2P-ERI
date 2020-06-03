@@ -12,7 +12,7 @@ H2PACK_INSTALL_DIR   = /home/mkurisu/Workspace/H2Pack
 OPENBLAS_INSTALL_DIR = /home/mkurisu/Workspace/OpenBLAS-0.3.8/install
 
 # The order of these lib files matters... 
-DEF      = -DUSE_AVX
+DEF      = 
 LIBS     = $(H2PERI_INSTALL_DIR)/src/libH2PERI.a $(H2PACK_INSTALL_DIR)/src/libH2Pack.a $(YATDFT_INSTALL_DIR)/src/libYATDFT.a $(SIMINT_INSTALL_DIR)/lib64/libsimint.a 
 INCS     = -I$(H2PERI_INSTALL_DIR)/src/include -I$(H2PACK_INSTALL_DIR)/src/include -I$(YATDFT_INSTALL_DIR)/src/include -I$(SIMINT_INSTALL_DIR)/include
 CFLAGS   = $(INCS) -Wall -g -std=gnu99 -O3 $(DEF)
