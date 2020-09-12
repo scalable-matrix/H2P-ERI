@@ -8,6 +8,7 @@
 #include "CMS.h"
 #include "H2ERI_typedef.h"
 #include "H2Pack_build.h"
+#include "H2Pack_utils.h"
 #include "H2Pack_aux_structs.h"
 #include "H2Pack_ID_compress.h"
 #include "linalg_lib_wrapper.h"  // In H2Pack
@@ -23,7 +24,7 @@
 //   pp : H2P_dense_mat structure, contains coordinates of proxy points
 void H2ERI_generate_proxy_point_layers(
     const double r1, const double r2, const int nlayer, 
-    int npts_layer, H2P_dense_mat_t pp
+    int npts_layer, H2P_dense_mat_p pp
 )
 {
     // 1. Decide the number of proxy points on each layer
@@ -112,9 +113,9 @@ void H2ERI_generate_proxy_point_layers(
 // Output parameters:
 //   h2eri->ovlp_ff_idx : Array, size h2pack->n_node, i-th vector contains
 //                        SSP indices that satisfy the requirements.
-void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri)
+void H2ERI_calc_ovlp_ff_idx(H2ERI_p h2eri)
 {
-    H2Pack_t h2pack = h2eri->h2pack;
+    H2Pack_p h2pack = h2eri->h2pack;
     int    n_node         = h2pack->n_node;
     int    root_idx       = h2pack->root_idx;
     int    n_point        = h2pack->n_point;    // == h2eri->num_sp
@@ -134,9 +135,9 @@ void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri)
     double *center_z = center + n_point * 2;
     
     // 1. Initialize ovlp_ff_idx
-    h2eri->ovlp_ff_idx = (H2P_int_vec_t *) malloc(sizeof(H2P_int_vec_t) * n_node);
+    h2eri->ovlp_ff_idx = (H2P_int_vec_p *) malloc(sizeof(H2P_int_vec_p) * n_node);
     assert(h2eri->ovlp_ff_idx != NULL);
-    H2P_int_vec_t *ovlp_ff_idx = h2eri->ovlp_ff_idx;
+    H2P_int_vec_p *ovlp_ff_idx = h2eri->ovlp_ff_idx;
     for (int i = 0; i < n_node; i++)
         H2P_int_vec_init(&ovlp_ff_idx[i], n_point);  // Won't exceed n_point
     ovlp_ff_idx[root_idx]->length = n_point;
@@ -155,7 +156,7 @@ void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri)
             if (node_n_child == 0) continue;
             int *child_nodes = children + node * max_child;
             
-            H2P_int_vec_t tmp_ff_idx = ovlp_ff_idx[node];
+            H2P_int_vec_p tmp_ff_idx = ovlp_ff_idx[node];
             int n_tmp_ff_idx = tmp_ff_idx->length;
             for (int k = 0; k < node_n_child; k++)
             {
@@ -270,9 +271,9 @@ void H2ERI_calc_ovlp_ff_idx(H2ERI_t h2eri)
 //   pair_idx    : Vector, SSP indices that contains target row indices set
 //   row_idx_new : Vector, target row new indices in pair_idx SSP
 void H2ERI_extract_shell_pair_idx(
-    const multi_sp_t *sp, H2P_int_vec_t row_idx,
-    H2P_int_vec_t sp_idx,   H2P_int_vec_t work_buf,
-    H2P_int_vec_t pair_idx, H2P_int_vec_t row_idx_new
+    const multi_sp_t *sp, H2P_int_vec_p row_idx,
+    H2P_int_vec_p sp_idx,   H2P_int_vec_p work_buf,
+    H2P_int_vec_p pair_idx, H2P_int_vec_p row_idx_new
 )
 {
     int num_target = row_idx->length;
@@ -341,7 +342,7 @@ void H2ERI_extract_shell_pair_idx(
 //   idx : Indices of elements
 // Output parameter:
 //   <return> : Sum result
-int H2ERI_gather_sum(const int *arr, H2P_int_vec_t idx)
+int H2ERI_gather_sum(const int *arr, H2P_int_vec_p idx)
 {
     int res = 0;
     for (int i = 0; i < idx->length; i++) 
@@ -357,7 +358,7 @@ int H2ERI_gather_sum(const int *arr, H2P_int_vec_t idx)
 // Output parameters:
 //   A_valbuf : Buffer for storing nonzeros of A^T
 //   A_idxbuf : Buffer for storing nonzero indices of A^T
-void H2ERI_gen_rand_sparse_mat(const int k, const int n, H2P_dense_mat_t A_valbuf, H2P_int_vec_t A_idxbuf)
+void H2ERI_gen_rand_sparse_mat(const int k, const int n, H2P_dense_mat_p A_valbuf, H2P_int_vec_p A_idxbuf)
 {
     // Note: we calculate y^T := A^T * x^T. Since x/y is row-major, 
     // each of its row is a column of x^T/y^T. We can just use SpMV
@@ -408,7 +409,7 @@ void H2ERI_gen_rand_sparse_mat(const int k, const int n, H2P_dense_mat_t A_valbu
 //   y        : m-by-n row-major dense matrix, leading dimension ldy
 void H2ERI_calc_sparse_mm(
     const int m, const int n, const int k,
-    H2P_dense_mat_t A_valbuf, H2P_int_vec_t A_idxbuf,
+    H2P_dense_mat_p A_valbuf, H2P_int_vec_p A_idxbuf,
     double *x, const int ldx, double *y, const int ldy
 )
 {
@@ -443,9 +444,9 @@ void H2ERI_calc_sparse_mm(
 //   h2eri : H2ERI structure with point partitioning & shell pair info
 // Output parameter:
 //   h2eri : H2ERI structure with H2 projection blocks
-void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
+void H2ERI_build_UJ_proxy(H2ERI_p h2eri)
 {
-    H2Pack_t h2pack = h2eri->h2pack;
+    H2Pack_p h2pack = h2eri->h2pack;
     int    n_thread       = h2pack->n_thread;
     int    n_point        = h2pack->n_point;
     int    n_node         = h2pack->n_node;
@@ -471,15 +472,15 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
     void   *stop_param    = &h2pack->QR_stop_tol;
     multi_sp_t *sp = h2eri->sp;
     shell_t *sp_shells = h2eri->sp_shells;
-    H2P_thread_buf_t *thread_buf      = h2pack->tb;
-    simint_buff_t    *simint_buffs    = h2eri->simint_buffs;
-    eri_batch_buff_t *eri_batch_buffs = h2eri->eri_batch_buffs;
+    H2P_thread_buf_p *thread_buf      = h2pack->tb;
+    simint_buff_p    *simint_buffs    = h2eri->simint_buffs;
+    eri_batch_buff_p *eri_batch_buffs = h2eri->eri_batch_buffs;
     
     // 1. Allocate U and J
     h2pack->n_UJ  = n_node;
-    h2pack->U     = (H2P_dense_mat_t*) malloc(sizeof(H2P_dense_mat_t) * n_node);
-    h2eri->J_pair = (H2P_int_vec_t*)   malloc(sizeof(H2P_int_vec_t)   * n_node);
-    h2eri->J_row  = (H2P_int_vec_t*)   malloc(sizeof(H2P_int_vec_t)   * n_node);
+    h2pack->U     = (H2P_dense_mat_p*) malloc(sizeof(H2P_dense_mat_p) * n_node);
+    h2eri->J_pair = (H2P_int_vec_p*)   malloc(sizeof(H2P_int_vec_p)   * n_node);
+    h2eri->J_row  = (H2P_int_vec_p*)   malloc(sizeof(H2P_int_vec_p)   * n_node);
     assert(h2pack->U != NULL && h2eri->J_pair != NULL && h2eri->J_row != NULL);
     for (int i = 0; i < h2pack->n_UJ; i++)
     {
@@ -487,9 +488,9 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         h2eri->J_pair[i] = NULL;
         h2eri->J_row[i]  = NULL;
     }
-    H2P_dense_mat_t *U      = h2pack->U;
-    H2P_int_vec_t   *J_pair = h2eri->J_pair;
-    H2P_int_vec_t   *J_row  = h2eri->J_row;
+    H2P_dense_mat_p *U      = h2pack->U;
+    H2P_int_vec_p   *J_pair = h2eri->J_pair;
+    H2P_int_vec_p   *J_row  = h2eri->J_row;
     
     // 2. Calculate overlapping far field (admissible) shell pairs
     //    and auxiliary information for updating skel_flag on each level
@@ -516,11 +517,11 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         }
     }
     H2ERI_calc_ovlp_ff_idx(h2eri);
-    H2P_int_vec_t *ovlp_ff_idx = h2eri->ovlp_ff_idx;
+    H2P_int_vec_p *ovlp_ff_idx = h2eri->ovlp_ff_idx;
     
     // 3. Allocate thread-local buffers
-    H2P_int_vec_t   *tb_idx = (H2P_int_vec_t *)   malloc(sizeof(H2P_int_vec_t)   * n_thread * 10);
-    H2P_dense_mat_t *tb_mat = (H2P_dense_mat_t *) malloc(sizeof(H2P_dense_mat_t) * n_thread * 4);
+    H2P_int_vec_p   *tb_idx = (H2P_int_vec_p *)   malloc(sizeof(H2P_int_vec_p)   * n_thread * 10);
+    H2P_dense_mat_p *tb_mat = (H2P_dense_mat_p *) malloc(sizeof(H2P_dense_mat_p) * n_thread * 4);
     assert(tb_idx != NULL && tb_mat != NULL);
     for (int i = 0; i < n_thread * 10; i++)
         H2P_int_vec_init(tb_idx + i, 1024);
@@ -544,28 +545,28 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
         {
             int tid = omp_get_thread_num();
 
-            H2P_int_vec_t   *tid_idx = tb_idx + tid * 10;
-            H2P_dense_mat_t *tid_mat = tb_mat + tid * 4;
-            H2P_int_vec_t    pair_idx        = tid_idx[0];
-            H2P_int_vec_t    row_idx         = tid_idx[1];
-            H2P_int_vec_t    node_ff_idx     = tid_idx[2];
-            H2P_int_vec_t    ID_buff         = tid_idx[2];
-            H2P_int_vec_t    sub_idx         = tid_idx[3];
-            H2P_int_vec_t    rndmatA_idx     = tid_idx[4];
-            H2P_int_vec_t    sub_row_idx     = tid_idx[2];
-            H2P_int_vec_t    sub_pair        = tid_idx[4];
-            H2P_int_vec_t    work_buf1       = tid_idx[5];
-            H2P_int_vec_t    work_buf2       = tid_idx[6];
-            H2P_int_vec_t    rndmatA_idx_cup = tid_idx[7];
-            H2P_int_vec_t    rndmatA_idx1    = tid_idx[8];
-            H2P_int_vec_t    node_ff_idx1    = tid_idx[9];
-            H2P_dense_mat_t  pp              = tid_mat[0];
-            H2P_dense_mat_t  A_ff_pp         = tid_mat[1];
-            H2P_dense_mat_t  A_block         = tid_mat[2];
-            H2P_dense_mat_t  QR_buff         = tid_mat[0];
-            H2P_dense_mat_t  rndmatA_val     = tid_mat[3];
-            simint_buff_t    simint_buff     = simint_buffs[tid];
-            eri_batch_buff_t eri_batch_buff  = eri_batch_buffs[tid];
+            H2P_int_vec_p   *tid_idx = tb_idx + tid * 10;
+            H2P_dense_mat_p *tid_mat = tb_mat + tid * 4;
+            H2P_int_vec_p    pair_idx        = tid_idx[0];
+            H2P_int_vec_p    row_idx         = tid_idx[1];
+            H2P_int_vec_p    node_ff_idx     = tid_idx[2];
+            H2P_int_vec_p    ID_buff         = tid_idx[2];
+            H2P_int_vec_p    sub_idx         = tid_idx[3];
+            H2P_int_vec_p    rndmatA_idx     = tid_idx[4];
+            H2P_int_vec_p    sub_row_idx     = tid_idx[2];
+            H2P_int_vec_p    sub_pair        = tid_idx[4];
+            H2P_int_vec_p    work_buf1       = tid_idx[5];
+            H2P_int_vec_p    work_buf2       = tid_idx[6];
+            H2P_int_vec_p    rndmatA_idx_cup = tid_idx[7];
+            H2P_int_vec_p    rndmatA_idx1    = tid_idx[8];
+            H2P_int_vec_p    node_ff_idx1    = tid_idx[9];
+            H2P_dense_mat_p  pp              = tid_mat[0];
+            H2P_dense_mat_p  A_ff_pp         = tid_mat[1];
+            H2P_dense_mat_p  A_block         = tid_mat[2];
+            H2P_dense_mat_p  QR_buff         = tid_mat[0];
+            H2P_dense_mat_p  rndmatA_val     = tid_mat[3];
+            simint_buff_p    simint_buff     = simint_buffs[tid];
+            eri_batch_buff_p eri_batch_buff  = eri_batch_buffs[tid];
             double *timers = U_timers + tid * 8;
             
             double st, et;
@@ -904,9 +905,9 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
     for (int i = 0; i < n_thread; i++)
         H2P_thread_buf_reset(thread_buf[i]);
     for (int i = 0; i < n_thread * 10; i++)
-        H2P_int_vec_destroy(tb_idx[i]);
+        H2P_int_vec_destroy(&tb_idx[i]);
     for (int i = 0; i < n_thread * 4; i++)
-        H2P_dense_mat_destroy(tb_mat[i]);
+        H2P_dense_mat_destroy(&tb_mat[i]);
     free(tb_idx);
     free(tb_mat);
     
@@ -928,10 +929,10 @@ void H2ERI_build_UJ_proxy(H2ERI_t h2eri)
 //   -*res_blk_->ld is rank of the low-rank approximation, U and V are stored 
 //   contiguous in *res_blk_->data. Otherwise, *res_blk_ stores a dense block.
 void H2ERI_compress_BD_blk(
-    H2P_dense_mat_t blk,   H2P_dense_mat_t blk0, 
-    H2P_dense_mat_t U_mat, H2P_dense_mat_t QR_buff,
-    H2P_int_vec_t   J,     H2P_int_vec_t   ID_buff,
-    void *stop_param, H2P_dense_mat_t *res_blk_
+    H2P_dense_mat_p blk,   H2P_dense_mat_p blk0, 
+    H2P_dense_mat_p U_mat, H2P_dense_mat_p QR_buff,
+    H2P_int_vec_p   J,     H2P_int_vec_p   ID_buff,
+    void *stop_param, H2P_dense_mat_p *res_blk_
 )
 {
     int blk_nrow = blk->nrow;
@@ -957,12 +958,12 @@ void H2ERI_compress_BD_blk(
     {
         // The compressed form is not small enough, use the original block
         H2P_dense_mat_init(res_blk_, blk_nrow, blk_ncol);
-        H2P_dense_mat_t res_blk = *res_blk_;
+        H2P_dense_mat_p res_blk = *res_blk_;
         memcpy(res_blk->data, blk0->data, sizeof(double) * blk_nrow * blk_ncol);
     } else {
         // Use the compressed form, store both the U_mat and the skeleton rows in *res_blk_
         H2P_dense_mat_init(res_blk_, 1, new_size);
-        H2P_dense_mat_t res_blk = *res_blk_;
+        H2P_dense_mat_p res_blk = *res_blk_;
         res_blk->nrow = blk_nrow;
         res_blk->ncol = blk_ncol;
         res_blk->ld   = -blk_rank;
@@ -984,9 +985,9 @@ void H2ERI_compress_BD_blk(
 //   h2eri : H2ERI structure with point partitioning & shell pair info
 // Output parameter:
 //   h2eri : H2ERI structure with H2 generator blocks
-void H2ERI_build_B(H2ERI_t h2eri)
+void H2ERI_build_B(H2ERI_p h2eri)
 {
-    H2Pack_t h2pack = h2eri->h2pack;
+    H2Pack_p h2pack = h2eri->h2pack;
     int BD_JIT            = h2pack->BD_JIT;
     int n_thread          = h2pack->n_thread;
     int n_node            = h2pack->n_node;
@@ -999,12 +1000,12 @@ void H2ERI_build_B(H2ERI_t h2eri)
     int *index_seq        = h2eri->index_seq;
     void *stop_param      = &h2pack->QR_stop_tol;
     multi_sp_t    *sp     = h2eri->sp;
-    H2P_int_vec_t B_blk   = h2pack->B_blk;
-    H2P_int_vec_t *J_pair = h2eri->J_pair;
-    H2P_int_vec_t *J_row  = h2eri->J_row;
-    H2P_thread_buf_t *thread_buf      = h2pack->tb;
-    simint_buff_t    *simint_buffs    = h2eri->simint_buffs;
-    eri_batch_buff_t *eri_batch_buffs = h2eri->eri_batch_buffs;
+    H2P_int_vec_p B_blk   = h2pack->B_blk;
+    H2P_int_vec_p *J_pair = h2eri->J_pair;
+    H2P_int_vec_p *J_row  = h2eri->J_row;
+    H2P_thread_buf_p *thread_buf      = h2pack->tb;
+    simint_buff_p    *simint_buffs    = h2eri->simint_buffs;
+    eri_batch_buff_p *eri_batch_buffs = h2eri->eri_batch_buffs;
     
     // 1. Allocate B
     h2pack->n_B = n_r_adm_pair;
@@ -1062,21 +1063,21 @@ void H2ERI_build_B(H2ERI_t h2eri)
     if (BD_JIT == 1) return;
     
     // 3. Generate B matrices
-    h2eri->c_B_blks = (H2P_dense_mat_t*) malloc(sizeof(H2P_dense_mat_t) * h2pack->n_B);
+    h2eri->c_B_blks = (H2P_dense_mat_p*) malloc(sizeof(H2P_dense_mat_p) * h2pack->n_B);
     assert(h2eri->c_B_blks != NULL);
-    H2P_dense_mat_t *c_B_blks = h2eri->c_B_blks;
+    H2P_dense_mat_p *c_B_blks = h2eri->c_B_blks;
     const int n_B_blk = B_blk->length - 1;
     #pragma omp parallel num_threads(n_thread)
     {
         int tid = omp_get_thread_num();
-        H2P_dense_mat_t  tmpB           = thread_buf[tid]->mat0;
-        H2P_dense_mat_t  tmpB0          = thread_buf[tid]->mat1;
-        H2P_int_vec_t    J              = thread_buf[tid]->idx0;
-        H2P_int_vec_t    ID_buff        = thread_buf[tid]->idx1;
-        simint_buff_t    simint_buff    = simint_buffs[tid];
-        eri_batch_buff_t eri_batch_buff = eri_batch_buffs[tid];
+        H2P_dense_mat_p  tmpB           = thread_buf[tid]->mat0;
+        H2P_dense_mat_p  tmpB0          = thread_buf[tid]->mat1;
+        H2P_int_vec_p    J              = thread_buf[tid]->idx0;
+        H2P_int_vec_p    ID_buff        = thread_buf[tid]->idx1;
+        simint_buff_p    simint_buff    = simint_buffs[tid];
+        eri_batch_buff_p eri_batch_buff = eri_batch_buffs[tid];
         
-        H2P_dense_mat_t U_mat, QR_buff;
+        H2P_dense_mat_p U_mat, QR_buff;
         H2P_dense_mat_init(&U_mat,   1, 1024);
         H2P_dense_mat_init(&QR_buff, 1, 1024);
 
@@ -1161,8 +1162,8 @@ void H2ERI_build_B(H2ERI_t h2eri)
         }  // End of i_blk loop
         thread_buf[tid]->timer += get_wtime_sec();
 
-        H2P_dense_mat_destroy(U_mat);
-        H2P_dense_mat_destroy(QR_buff);
+        H2P_dense_mat_destroy(&U_mat);
+        H2P_dense_mat_destroy(&QR_buff);
     }  // End of "pragma omp parallel"
 
     // Recalculate the total size of the B blocks and re-partition B blocks for matvec
@@ -1203,9 +1204,9 @@ void H2ERI_build_B(H2ERI_t h2eri)
 //   h2eri : H2ERI structure with point partitioning & shell pair info
 // Output parameter:
 //   h2eri : H2ERI structure with H2 dense blocks
-void H2ERI_build_D(H2ERI_t h2eri)
+void H2ERI_build_D(H2ERI_p h2eri)
 {
-    H2Pack_t h2pack = h2eri->h2pack;
+    H2Pack_p h2pack = h2eri->h2pack;
     int BD_JIT           = h2pack->BD_JIT;
     int n_thread         = h2pack->n_thread;
     int n_leaf_node      = h2pack->n_leaf_node;
@@ -1216,12 +1217,12 @@ void H2ERI_build_D(H2ERI_t h2eri)
     int *sp_bfp_sidx     = h2eri->sp_bfp_sidx;
     int *index_seq       = h2eri->index_seq;
     void *stop_param     = &h2pack->QR_stop_tol;
-    H2P_int_vec_t D_blk0 = h2pack->D_blk0;
-    H2P_int_vec_t D_blk1 = h2pack->D_blk1;
+    H2P_int_vec_p D_blk0 = h2pack->D_blk0;
+    H2P_int_vec_p D_blk1 = h2pack->D_blk1;
     multi_sp_t *sp       = h2eri->sp;
-    H2P_thread_buf_t *thread_buf      = h2pack->tb;
-    simint_buff_t    *simint_buffs    = h2eri->simint_buffs;
-    eri_batch_buff_t *eri_batch_buffs = h2eri->eri_batch_buffs;
+    H2P_thread_buf_p *thread_buf      = h2pack->tb;
+    simint_buff_p    *simint_buffs    = h2eri->simint_buffs;
+    eri_batch_buff_p *eri_batch_buffs = h2eri->eri_batch_buffs;
     
     // 1. Allocate D
     h2pack->n_D = n_leaf_node + n_r_inadm_pair;
@@ -1273,23 +1274,23 @@ void H2ERI_build_D(H2ERI_t h2eri)
     
     if (BD_JIT == 1) return;
     
-    h2eri->c_D_blks = (H2P_dense_mat_t*) malloc(sizeof(H2P_dense_mat_t) * h2pack->n_D);
+    h2eri->c_D_blks = (H2P_dense_mat_p*) malloc(sizeof(H2P_dense_mat_p) * h2pack->n_D);
     assert(h2eri->c_D_blks != NULL);
-    H2P_dense_mat_t *c_D_blks = h2eri->c_D_blks;
+    H2P_dense_mat_p *c_D_blks = h2eri->c_D_blks;
     const int n_D0_blk = D_blk0->length - 1;
     const int n_D1_blk = D_blk1->length - 1;
     #pragma omp parallel num_threads(n_thread)
     {
         int tid = omp_get_thread_num();
         
-        H2P_dense_mat_t  tmpD           = thread_buf[tid]->mat0;
-        H2P_dense_mat_t  tmpD0          = thread_buf[tid]->mat1;
-        H2P_int_vec_t    J              = thread_buf[tid]->idx0;
-        H2P_int_vec_t    ID_buff        = thread_buf[tid]->idx1;
-        simint_buff_t    simint_buff    = simint_buffs[tid];
-        eri_batch_buff_t eri_batch_buff = eri_batch_buffs[tid];
+        H2P_dense_mat_p  tmpD           = thread_buf[tid]->mat0;
+        H2P_dense_mat_p  tmpD0          = thread_buf[tid]->mat1;
+        H2P_int_vec_p    J              = thread_buf[tid]->idx0;
+        H2P_int_vec_p    ID_buff        = thread_buf[tid]->idx1;
+        simint_buff_p    simint_buff    = simint_buffs[tid];
+        eri_batch_buff_p eri_batch_buff = eri_batch_buffs[tid];
         
-        H2P_dense_mat_t U_mat, QR_buff;
+        H2P_dense_mat_p U_mat, QR_buff;
         H2P_dense_mat_init(&U_mat,   1, 1024);
         H2P_dense_mat_init(&QR_buff, 1, 1024);
 
@@ -1364,8 +1365,8 @@ void H2ERI_build_D(H2ERI_t h2eri)
         }  // End of i_blk1 loop
         thread_buf[tid]->timer += get_wtime_sec();
 
-        H2P_dense_mat_destroy(U_mat);
-        H2P_dense_mat_destroy(QR_buff);
+        H2P_dense_mat_destroy(&U_mat);
+        H2P_dense_mat_destroy(&QR_buff);
     }  // End of "pragma omp parallel"
     
     // Recalculate the total size of the D blocks and re-partition D blocks for matvec
@@ -1373,7 +1374,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
     D0_total_size = 0;
     for (int i = 0; i < n_leaf_node; i++)
     {
-        H2P_dense_mat_t Di = c_D_blks[i];
+        H2P_dense_mat_p Di = c_D_blks[i];
         size_t Di_size = Di->size;
         h2pack->mat_size[6] += Di_size;
         h2pack->mat_size[6] += (size_t) (Di->nrow + Di->ncol);
@@ -1384,7 +1385,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
     D1_total_size = 0;
     for (int i = 0; i < n_r_inadm_pair; i++)
     {
-        H2P_dense_mat_t Di = c_D_blks[i + n_leaf_node];
+        H2P_dense_mat_p Di = c_D_blks[i + n_leaf_node];
         size_t Di_size = Di->size;
         h2pack->mat_size[6] += Di_size;
         h2pack->mat_size[6] += (size_t) (2 * (Di->nrow + Di->ncol));
@@ -1412,7 +1413,7 @@ void H2ERI_build_D(H2ERI_t h2eri)
 }
 
 // Build H2 representation for ERI tensor
-void H2ERI_build_H2(H2ERI_t h2eri, const int BD_JIT)
+void H2ERI_build_H2(H2ERI_p h2eri, const int BD_JIT)
 {
     double st, et;
 

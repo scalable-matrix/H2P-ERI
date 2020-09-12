@@ -13,7 +13,7 @@ extern "C" {
 //   den_mat : Symmetric density matrix, size h2eri->num_bf * h2eri->num_bf
 // Output parameters:
 //   J_mat : Symmetric Coulomb matrix, size h2eri->num_bf * h2eri->num_bf
-void H2ERI_build_Coulomb(H2ERI_t h2eri, const double *den_mat, double *J_mat);
+void H2ERI_build_Coulomb(H2ERI_p h2eri, const double *den_mat, double *J_mat);
 
 #ifdef __cplusplus
 }

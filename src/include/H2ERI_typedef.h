@@ -37,18 +37,18 @@ struct H2ERI
     shell_t          *shells;           // Array, size nshell, contracted shells
     shell_t          *sp_shells;        // Array, size 2 * num_sp, each column is a SSP
     multi_sp_t       *sp;               // Array, size num_sp, SSP
-    H2P_int_vec_t    *J_pair;           // Array, size h2pack->n_node, skeleton shell pair indices of each node
-    H2P_int_vec_t    *J_row;            // Array, size h2pack->n_node, skeleton row indices in each node's shell pairs
-    H2P_int_vec_t    *ovlp_ff_idx;      // Array, size h2pack->n_node, i-th vector contains the far field 
+    H2P_int_vec_p    *J_pair;           // Array, size h2pack->n_node, skeleton shell pair indices of each node
+    H2P_int_vec_p    *J_row;            // Array, size h2pack->n_node, skeleton row indices in each node's shell pairs
+    H2P_int_vec_p    *ovlp_ff_idx;      // Array, size h2pack->n_node, i-th vector contains the far field 
                                         // points whose extents are overlapped with the near field of i-th node
-    simint_buff_t    *simint_buffs;     // Array, size h2pack->n_thread, simint_buff structures for each thread
-    eri_batch_buff_t *eri_batch_buffs;  // Array, size h2pack->n_thread, eri_batch_buff structures for each thread
-    H2P_dense_mat_t  *c_B_blks;         // Array, size h2pack->n_B, compressed B blocks
-    H2P_dense_mat_t  *c_D_blks;         // Array, size h2pack->n_D, compressed D blocks
-    H2Pack_t         h2pack;            // H2Pack data structure
+    simint_buff_p    *simint_buffs;     // Array, size h2pack->n_thread, simint_buff structures for each thread
+    eri_batch_buff_p *eri_batch_buffs;  // Array, size h2pack->n_thread, eri_batch_buff structures for each thread
+    H2P_dense_mat_p  *c_B_blks;         // Array, size h2pack->n_B, compressed B blocks
+    H2P_dense_mat_p  *c_D_blks;         // Array, size h2pack->n_D, compressed D blocks
+    H2Pack_p         h2pack;            // H2Pack data structure
 };
 
-typedef struct H2ERI* H2ERI_t;
+typedef struct H2ERI* H2ERI_p;
 
 #define ALPHA_SUP 1.0
 
@@ -59,17 +59,17 @@ typedef struct H2ERI* H2ERI_t;
 //   QR_tol  : Tolerance of column-pivoting QR (controls the overall accuracy)
 // Output parameter:
 //   h2eri_ : Initialized H2ERI structure
-void H2ERI_init(H2ERI_t *h2eri_, const double scr_tol, const double ext_tol, const double QR_tol);
+void H2ERI_init(H2ERI_p *h2eri_, const double scr_tol, const double ext_tol, const double QR_tol);
 
 // Destroy a H2ERI structure
 // Input parameter:
 //   h2eri : H2ERI structure to be destroyed
-void H2ERI_destroy(H2ERI_t h2eri);
+void H2ERI_destroy(H2ERI_p h2eri);
 
 // Print H2ERI statistic information
 // Input parameter:
 //   h2eri : H2ERI structure to be destroyed
-void H2ERI_print_statistic(H2ERI_t h2eri);
+void H2ERI_print_statistic(H2ERI_p h2eri);
 
 #ifdef __cplusplus
 }

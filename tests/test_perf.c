@@ -8,7 +8,7 @@
 #include "TinyDFT.h"
 #include "H2ERI.h"
 
-void TinyDFT_copy_shells_to_H2ERI(TinyDFT_t TinyDFT, H2ERI_t h2eri)
+void TinyDFT_copy_shells_to_H2ERI(TinyDFT_p TinyDFT, H2ERI_p h2eri)
 {
     h2eri->natom  = TinyDFT->natom;
     h2eri->nshell = TinyDFT->nshell;
@@ -36,12 +36,12 @@ int main(int argc, char **argv)
     printf("INFO: use H2ERI J (relerr %.2e)\n", atof(argv[3]));
 
     // Initialize TinyDFT
-    TinyDFT_t TinyDFT;
+    TinyDFT_p TinyDFT;
     TinyDFT_init(&TinyDFT, argv[1], argv[2]);
     
     // Initialize H2P-ERI
     double st = get_wtime_sec();
-    H2ERI_t h2eri;
+    H2ERI_p h2eri;
     H2ERI_init(&h2eri, 1e-10, 1e-10, atof(argv[3]));
     TinyDFT_copy_shells_to_H2ERI(TinyDFT, h2eri);
     H2ERI_process_shells(h2eri);

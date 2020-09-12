@@ -22,7 +22,7 @@
 //   h2eri->sp        : Array, size 2 * num_sp, sorted SSP
 //   h2eri->sp_center : Array, size 3 * num_sp, sorted centers of SSP
 //   h2eri->sp_extent : Array, size num_sp, sorted extents of SSP
-void H2ERI_partition_sp_centers(H2ERI_t h2eri, int max_leaf_points, double max_leaf_size)
+void H2ERI_partition_sp_centers(H2ERI_p h2eri, int max_leaf_points, double max_leaf_size)
 {
     // 1. Partition screened shell pair centers
     int num_sp = h2eri->num_sp;
@@ -103,7 +103,7 @@ void H2ERI_partition_sp_centers(H2ERI_t h2eri, int max_leaf_points, double max_l
 //   h2eri->shell_bf_sidx : Array, size nshell, indices of each shell's first basis function
 //   h2eri->sp_nbfp       : Array, size num_sp, number of basis function pairs of each SSP
 //   h2eri->sp_bfp_sidx   : Array, size num_sp+1, indices of each SSP first basis function pair
-void H2ERI_calc_bf_bfp_info(H2ERI_t h2eri)
+void H2ERI_calc_bf_bfp_info(H2ERI_p h2eri)
 {
     int nshell = h2eri->nshell;
     int num_sp = h2eri->num_sp;
@@ -147,9 +147,9 @@ void H2ERI_calc_bf_bfp_info(H2ERI_t h2eri)
 //   h2eri->sp_extent : Array, size num_sp, extents of SSP, sorted
 // Output parameter:
 //   h2eri->box_extent : Array, size h2pack->n_node, extent of each H2 node box
-void H2ERI_calc_box_extent(H2ERI_t h2eri)
+void H2ERI_calc_box_extent(H2ERI_p h2eri)
 {
-    H2Pack_t h2pack = h2eri->h2pack;
+    H2Pack_p h2pack = h2eri->h2pack;
     int    n_node        = h2pack->n_node;
     int    max_level     = h2pack->max_level;
     int    max_child     = h2pack->max_child;
@@ -230,9 +230,9 @@ void H2ERI_calc_box_extent(H2ERI_t h2eri)
 //   h2eri->sp_bfp_sidx : Array, size num_sp+1, indices of each SSP first basis function pair
 // Output parameter:
 //   h2eri->h2pack->mat_cluster : Array, size h2pack->n_node * 2, matvec cluster for H2 nodes
-void H2ERI_calc_mat_cluster(H2ERI_t h2eri)
+void H2ERI_calc_mat_cluster(H2ERI_p h2eri)
 {
-    H2Pack_t h2pack  = h2eri->h2pack;
+    H2Pack_p h2pack  = h2eri->h2pack;
     int n_node       = h2pack->n_node;
     int max_child    = h2pack->max_child;
     int *pt_cluster  = h2pack->pt_cluster;
@@ -266,7 +266,7 @@ void H2ERI_calc_mat_cluster(H2ERI_t h2eri)
 }
 
 // H2 partition of screened shell pair centers
-void H2ERI_partition(H2ERI_t h2eri)
+void H2ERI_partition(H2ERI_p h2eri)
 {
     H2ERI_partition_sp_centers(h2eri, 0, 0.0);
     H2ERI_calc_bf_bfp_info(h2eri);
@@ -275,8 +275,8 @@ void H2ERI_partition(H2ERI_t h2eri)
     
     // Initialize thread local Simint buffer
     int n_thread = h2eri->h2pack->n_thread;
-    h2eri->simint_buffs    = (simint_buff_t*)    malloc(sizeof(simint_buff_t)    * n_thread);
-    h2eri->eri_batch_buffs = (eri_batch_buff_t*) malloc(sizeof(eri_batch_buff_t) * n_thread);
+    h2eri->simint_buffs    = (simint_buff_p*)    malloc(sizeof(simint_buff_p)    * n_thread);
+    h2eri->eri_batch_buffs = (eri_batch_buff_p*) malloc(sizeof(eri_batch_buff_p) * n_thread);
     assert(h2eri->simint_buffs    != NULL);
     assert(h2eri->eri_batch_buffs != NULL);
     for (int i = 0; i < n_thread; i++)

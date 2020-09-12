@@ -229,9 +229,9 @@ double CMS_get_Schwarz_scrval(const int nshell, shell_t *shells, double *scr_val
 }
 
 // Initialize a Simint buffer structure
-void CMS_init_Simint_buff(const int max_am, simint_buff_t *buff_)
+void CMS_init_Simint_buff(const int max_am, simint_buff_p *buff_)
 {
-    simint_buff_t buff = (simint_buff_t) malloc(sizeof(struct simint_buff));
+    simint_buff_p buff = (simint_buff_p) malloc(sizeof(struct simint_buff));
     assert(buff != NULL);
     
     int max_ncart = NCART(max_am);
@@ -251,7 +251,7 @@ void CMS_init_Simint_buff(const int max_am, simint_buff_t *buff_)
 }
 
 // Destroy a Simint buffer structure
-void CMS_destroy_Simint_buff(simint_buff_t buff)
+void CMS_destroy_Simint_buff(simint_buff_p buff)
 {
     if (buff == NULL) return;
     buff->work_msize = 0;
@@ -265,9 +265,9 @@ void CMS_destroy_Simint_buff(simint_buff_t buff)
 }
 
 // Initialize an ERI batch buffer structure
-void CMS_init_eri_batch_buff(const int max_am, const int num_param, eri_batch_buff_t *buff_)
+void CMS_init_eri_batch_buff(const int max_am, const int num_param, eri_batch_buff_p *buff_)
 {
-    eri_batch_buff_t buff = (eri_batch_buff_t) malloc(sizeof(struct eri_batch_buff));
+    eri_batch_buff_p buff = (eri_batch_buff_p) malloc(sizeof(struct eri_batch_buff));
     assert(buff != NULL);
     
     int num_batch = (max_am + 1) * (max_am + 1);
@@ -289,7 +289,7 @@ void CMS_init_eri_batch_buff(const int max_am, const int num_param, eri_batch_bu
 }
 
 // Destroy an ERI batch buffer structure
-void CMS_destroy_eri_batch_buff(eri_batch_buff_t buff)
+void CMS_destroy_eri_batch_buff(eri_batch_buff_p buff)
 {
     if (buff == NULL) return;
     buff->max_am    = -1;
@@ -303,7 +303,7 @@ void CMS_destroy_eri_batch_buff(eri_batch_buff_t buff)
 
 // Push a ket pair into an ERI batch
 int CMS_push_ket_pair_to_eri_batch(
-    eri_batch_buff_t buff, const int ket_am1, const int ket_am2, 
+    eri_batch_buff_p buff, const int ket_am1, const int ket_am2, 
     const multi_sp_p ket_pair, const int *param
 )
 {
@@ -324,7 +324,7 @@ int CMS_push_ket_pair_to_eri_batch(
 
 // Calculate all shell quartets in an ERI batch 
 void CMS_calc_ERI_batch(
-    eri_batch_buff_t eri_batch_buff, simint_buff_t simint_buff, 
+    eri_batch_buff_p eri_batch_buff, simint_buff_p simint_buff, 
     const int ket_am1, const int ket_am2, int *eri_size, int **batch_param
 )
 {
@@ -386,8 +386,8 @@ void H2ERI_copy_ERI_to_mat(
 // results to form a matrix
 void H2ERI_calc_ERI_pairs_to_mat(
     const multi_sp_p sp, const int n_bra_pair, const int n_ket_pair,
-    const int *bra_idx, const int *ket_idx, simint_buff_t simint_buff, 
-    double *mat, const int ldm, eri_batch_buff_t eri_batch_buff
+    const int *bra_idx, const int *ket_idx, simint_buff_p simint_buff, 
+    double *mat, const int ldm, eri_batch_buff_p eri_batch_buff
 )
 {
     int param[4];

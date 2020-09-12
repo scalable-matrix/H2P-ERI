@@ -20,7 +20,7 @@ struct simint_buff
     multi_sp_t bra_pair;    // Bra-side shell pairs for ERI calculation
     multi_sp_t ket_pair;    // Ket-side shell pairs for ERI calculation
 };
-typedef struct simint_buff* simint_buff_t;
+typedef struct simint_buff* simint_buff_p;
 
 #define NCART(am)  ((am>=0)?((((am)+2)*((am)+1))>>1):0)
 #define MAX(a, b)  ((a) > (b) ? (a) : (b))
@@ -37,7 +37,7 @@ struct eri_batch_buff
     multi_sp_p *ket_pairs;      // Size num_batch*NPAIR_SIMD, pointers to ket pairs
     multi_sp_t ket_multipairs;  // Combined ket pairs for ERI batching
 };
-typedef struct eri_batch_buff* eri_batch_buff_t;
+typedef struct eri_batch_buff* eri_batch_buff_p;
 
 // Read all shell information in a .mol file and normalize all these shells
 // Input parameter:
@@ -87,12 +87,12 @@ double CMS_get_Schwarz_scrval(const int nshell, shell_t *shells, double *scr_val
 //   max_am : Maximum angular momentum in the system
 // Output parameter:
 //   *buff_ : Initialized Simint buffer stricture
-void CMS_init_Simint_buff(const int max_am, simint_buff_t *buff_);
+void CMS_init_Simint_buff(const int max_am, simint_buff_p *buff_);
 
 // Destroy a Simint buffer structure
 // Input parameter:
 //   buff : Simint buffer stricture to be destroyed 
-void CMS_destroy_Simint_buff(simint_buff_t buff);
+void CMS_destroy_Simint_buff(simint_buff_p buff);
 
 // Initialize an ERI batch buffer structure
 // Input parameters:
@@ -100,12 +100,12 @@ void CMS_destroy_Simint_buff(simint_buff_t buff);
 //   num_param : Number of parameters to save for each shell quartet
 // Output parameter:
 //   *buff_ : Initialized ERI batch buffer stricture
-void CMS_init_eri_batch_buff(const int max_am, const int num_param, eri_batch_buff_t *buff_);
+void CMS_init_eri_batch_buff(const int max_am, const int num_param, eri_batch_buff_p *buff_);
 
 // Destroy an ERI batch buffer structure
 // Input parameter:
 //   buff : ERI batch buffer stricture to be destroyed 
-void CMS_destroy_eri_batch_buff(eri_batch_buff_t buff);
+void CMS_destroy_eri_batch_buff(eri_batch_buff_p buff);
 
 // Push a ket pair into an ERI batch
 // Input parameters:
@@ -117,7 +117,7 @@ void CMS_destroy_eri_batch_buff(eri_batch_buff_t buff);
 //   <return>: Number of ket pairs in the target batch after pushing,
 //             == 0 means batch is full before pushing.
 int CMS_push_ket_pair_to_eri_batch(
-    eri_batch_buff_t buff, const int ket_am1, const int ket_am2, 
+    eri_batch_buff_p buff, const int ket_am1, const int ket_am2, 
     const multi_sp_p ket_pair, const int *param
 );
 
@@ -131,7 +131,7 @@ int CMS_push_ket_pair_to_eri_batch(
 //   *batch_param : Pointer to the stored parameters of all shell quartets
 //                  in the computed batch
 void CMS_calc_ERI_batch(
-    eri_batch_buff_t eri_batch_buff, simint_buff_t simint_buff, 
+    eri_batch_buff_p eri_batch_buff, simint_buff_p simint_buff, 
     const int ket_am1, const int ket_am2, int *eri_size, int **batch_param
 );
 
@@ -158,8 +158,8 @@ void CMS_calc_ERI_batch(
 //         total number of bra-side shell pairs' basis function pairs
 void H2ERI_calc_ERI_pairs_to_mat(
     const multi_sp_p sp, const int n_bra_pair, const int n_ket_pair,
-    const int *bra_idx, const int *ket_idx, simint_buff_t simint_buff, 
-    double *mat, const int ldm, eri_batch_buff_t eri_batch_buff
+    const int *bra_idx, const int *ket_idx, simint_buff_p simint_buff, 
+    double *mat, const int ldm, eri_batch_buff_p eri_batch_buff
 );
 
 // Calculate NAI pairs (N_i M_i|[x_j, y_j, z_j]) and unfold all NAI 

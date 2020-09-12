@@ -6,21 +6,19 @@
 #include <omp.h>
 
 #include "H2Pack_matvec.h"
+#include "H2Pack_utils.h"
 #include "H2ERI_typedef.h"
 #include "utils.h"  // In H2Pack
 
-// These five external functions are in H2Pack_matvec.c, but not exposed in H2Pack_matvec.h
+// These two external functions are in H2Pack_matvec.c, but not exposed in H2Pack_utils.h
 extern void CBLAS_BI_GEMV(
     const int nrow, const int ncol, const double *mat, const int ldm,
     const double *x_in_0, const double *x_in_1, double *x_out_0, double *x_out_1
 );
-extern void H2P_matvec_init_y1(H2Pack_t h2pack);
-extern void H2P_matvec_sum_y1_thread(H2Pack_t h2pack);
-extern void H2P_matvec_fwd_transform(H2Pack_t h2pack, const double *x, double *y);
-extern void H2P_matvec_bwd_transform(H2Pack_t h2pack, const double *x, double *y);
+extern void H2P_matvec_sum_y1_thread(H2Pack_p h2pack);
 
 // This external function is in H2ERI_build_H2.c, but not exposed in H2ERI_build_H2.h
-extern int H2ERI_gather_sum(const int *arr, H2P_int_vec_t idx);
+extern int H2ERI_gather_sum(const int *arr, H2P_int_vec_p idx);
 
 // "Uncontract" the density matrix according to SSP and unroll 
 // the result to a column for H2 matvec.
@@ -36,7 +34,7 @@ extern int H2ERI_gather_sum(const int *arr, H2P_int_vec_t idx);
 //                          the contracted shell indices of a SSP
 // Output parameter:
 //   h2eri->unc_denmat_x  : Array, size num_sp_bfp, uncontracted density matrix
-void H2ERI_uncontract_den_mat(H2ERI_t h2eri, const double *den_mat)
+void H2ERI_uncontract_den_mat(H2ERI_p h2eri, const double *den_mat)
 {
     int num_bf = h2eri->num_bf;
     int num_sp = h2eri->num_sp;
@@ -88,7 +86,7 @@ void H2ERI_uncontract_den_mat(H2ERI_t h2eri, const double *den_mat)
 //   h2eri->H2_matvec_y   : Array, size num_sp_bfp, H2 matvec result 
 // Output parameter:
 //   J_mat : Symmetric Coulomb matrix, size h2eri->num_bf^2
-void H2ERI_contract_H2_matvec(H2ERI_t h2eri, double *J_mat)
+void H2ERI_contract_H2_matvec(H2ERI_p h2eri, double *J_mat)
 {
     int num_bf = h2eri->num_bf;
     int num_sp = h2eri->num_sp;
@@ -156,7 +154,7 @@ void H2ERI_contract_H2_matvec(H2ERI_t h2eri, double *J_mat)
 //   x_out_0 : Array, size blk->nrow, == blk   * x_in_0
 //   x_out_1 : Array, size blk->ncol, == blk^T * x_in_1
 void H2ERI_BD_blk_bi_matvec(
-    H2P_dense_mat_t blk, H2P_dense_mat_t tmp_v,
+    H2P_dense_mat_p blk, H2P_dense_mat_p tmp_v,
     const double *x_in_0, const double *x_in_1, 
     double *x_out_0, double *x_out_1
 )
@@ -195,22 +193,22 @@ void H2ERI_BD_blk_bi_matvec(
 
 // H2 matvec intermediate multiplication for H2ERI
 // All B_{ij} matrices are calculated and stored
-void H2ERI_H2_matvec_intmd_mult_AOT(H2ERI_t h2eri, const double *x)
+void H2ERI_H2_matvec_intmd_mult_AOT(H2ERI_p h2eri, const double *x)
 {
-    H2Pack_t h2pack  = h2eri->h2pack;
+    H2Pack_p h2pack  = h2eri->h2pack;
     int n_node       = h2pack->n_node;
     int n_thread     = h2pack->n_thread;
     int *r_adm_pairs = h2pack->r_adm_pairs;
     int *node_level  = h2pack->node_level;
     int *mat_cluster = h2pack->mat_cluster;
-    H2P_int_vec_t   B_blk        = h2pack->B_blk;
-    H2P_dense_mat_t *y0          = h2pack->y0;
-    H2P_thread_buf_t *thread_buf = h2pack->tb;
-    H2P_dense_mat_t  *c_B_blks   = h2eri->c_B_blks;
+    H2P_int_vec_p   B_blk        = h2pack->B_blk;
+    H2P_dense_mat_p *y0          = h2pack->y0;
+    H2P_thread_buf_p *thread_buf = h2pack->tb;
+    H2P_dense_mat_p  *c_B_blks   = h2eri->c_B_blks;
     
     // 1. Initialize y1 
     H2P_matvec_init_y1(h2pack);
-    H2P_dense_mat_t *y1 = h2pack->y1;
+    H2P_dense_mat_p *y1 = h2pack->y1;
     
     // 2. Intermediate multiplication
     const int n_B_blk = B_blk->length - 1;
@@ -220,7 +218,7 @@ void H2ERI_H2_matvec_intmd_mult_AOT(H2ERI_t h2eri, const double *x)
         double *y = thread_buf[tid]->y;
         thread_buf[tid]->timer = -get_wtime_sec();
         
-        H2P_dense_mat_t tmp_v = thread_buf[tid]->mat0;
+        H2P_dense_mat_p tmp_v = thread_buf[tid]->mat0;
 
         #pragma omp for schedule(static)
         for (int i = 0; i < n_node; i++)
@@ -248,7 +246,7 @@ void H2ERI_H2_matvec_intmd_mult_AOT(H2ERI_t h2eri, const double *x)
                 int level0 = node_level[node0];
                 int level1 = node_level[node1];
                 
-                H2P_dense_mat_t Bi = c_B_blks[i];
+                H2P_dense_mat_p Bi = c_B_blks[i];
                 
                 // (1) Two nodes are of the same level, compress on both sides
                 if (level0 == level1)
@@ -334,9 +332,9 @@ void H2ERI_H2_matvec_intmd_mult_AOT(H2ERI_t h2eri, const double *x)
 
 // H2 matvec intermediate multiplication for H2ERI
 // Need to calculate all B_{ij} matrices before using it
-void H2ERI_H2_matvec_intmd_mult_JIT(H2ERI_t h2eri, const double *x)
+void H2ERI_H2_matvec_intmd_mult_JIT(H2ERI_p h2eri, const double *x)
 {
-    H2Pack_t h2pack = h2eri->h2pack;
+    H2Pack_p h2pack = h2eri->h2pack;
     int n_node            = h2pack->n_node;
     int n_thread          = h2pack->n_thread;
     int *r_adm_pairs      = h2pack->r_adm_pairs;
@@ -348,17 +346,17 @@ void H2ERI_H2_matvec_intmd_mult_JIT(H2ERI_t h2eri, const double *x)
     int *B_nrow           = h2pack->B_nrow;
     int *B_ncol           = h2pack->B_ncol;
     multi_sp_t    *sp     = h2eri->sp;
-    H2P_int_vec_t B_blk   = h2pack->B_blk;
-    H2P_int_vec_t *J_pair = h2eri->J_pair;
-    H2P_int_vec_t *J_row  = h2eri->J_row;
-    H2P_dense_mat_t *y0   = h2pack->y0;
-    H2P_thread_buf_t *thread_buf      = h2pack->tb;
-    simint_buff_t    *simint_buffs    = h2eri->simint_buffs;
-    eri_batch_buff_t *eri_batch_buffs = h2eri->eri_batch_buffs;
+    H2P_int_vec_p B_blk   = h2pack->B_blk;
+    H2P_int_vec_p *J_pair = h2eri->J_pair;
+    H2P_int_vec_p *J_row  = h2eri->J_row;
+    H2P_dense_mat_p *y0   = h2pack->y0;
+    H2P_thread_buf_p *thread_buf      = h2pack->tb;
+    simint_buff_p    *simint_buffs    = h2eri->simint_buffs;
+    eri_batch_buff_p *eri_batch_buffs = h2eri->eri_batch_buffs;
     
     // 1. Initialize y1 
     H2P_matvec_init_y1(h2pack);
-    H2P_dense_mat_t *y1 = h2pack->y1;
+    H2P_dense_mat_p *y1 = h2pack->y1;
     
     // 2. Intermediate multiplication
     const int n_B_blk = B_blk->length - 1;
@@ -366,9 +364,9 @@ void H2ERI_H2_matvec_intmd_mult_JIT(H2ERI_t h2eri, const double *x)
     {
         int tid = omp_get_thread_num();
         
-        H2P_dense_mat_t  tmpB           = thread_buf[tid]->mat0;
-        simint_buff_t    simint_buff    = simint_buffs[tid];
-        eri_batch_buff_t eri_batch_buff = eri_batch_buffs[tid];
+        H2P_dense_mat_p  tmpB           = thread_buf[tid]->mat0;
+        simint_buff_p    simint_buff    = simint_buffs[tid];
+        eri_batch_buff_p eri_batch_buff = eri_batch_buffs[tid];
         
         double *y = thread_buf[tid]->y;
         
@@ -522,18 +520,18 @@ void H2ERI_H2_matvec_intmd_mult_JIT(H2ERI_t h2eri, const double *x)
 
 // H2 matvec dense multiplication for H2ERI
 // All D_{ij} matrices are calculated and stored
-void H2ERI_H2_matvec_dense_mult_AOT(H2ERI_t h2eri, const double *x)
+void H2ERI_H2_matvec_dense_mult_AOT(H2ERI_p h2eri, const double *x)
 {
-    H2Pack_t h2pack    = h2eri->h2pack;
+    H2Pack_p h2pack    = h2eri->h2pack;
     int n_thread       = h2pack->n_thread;
     int n_leaf_node    = h2pack->n_leaf_node;
     int *leaf_nodes    = h2pack->height_nodes;
     int *mat_cluster   = h2pack->mat_cluster;
     int *r_inadm_pairs = h2pack->r_inadm_pairs;
-    H2P_int_vec_t    D_blk0      = h2pack->D_blk0;
-    H2P_int_vec_t    D_blk1      = h2pack->D_blk1;
-    H2P_thread_buf_t *thread_buf = h2pack->tb;
-    H2P_dense_mat_t  *c_D_blks   = h2eri->c_D_blks;
+    H2P_int_vec_p    D_blk0      = h2pack->D_blk0;
+    H2P_int_vec_p    D_blk1      = h2pack->D_blk1;
+    H2P_thread_buf_p *thread_buf = h2pack->tb;
+    H2P_dense_mat_p  *c_D_blks   = h2eri->c_D_blks;
     
     const int n_D0_blk = D_blk0->length - 1;
     const int n_D1_blk = D_blk1->length - 1;
@@ -542,8 +540,8 @@ void H2ERI_H2_matvec_dense_mult_AOT(H2ERI_t h2eri, const double *x)
         int tid = omp_get_thread_num();
         
         double *y = thread_buf[tid]->y;
-        H2P_dense_mat_t tmp_v  = thread_buf[tid]->mat0;
-        H2P_dense_mat_t tmp_v2 = thread_buf[tid]->mat1;
+        H2P_dense_mat_p tmp_v  = thread_buf[tid]->mat0;
+        H2P_dense_mat_p tmp_v2 = thread_buf[tid]->mat1;
 
         thread_buf[tid]->timer = -get_wtime_sec();
         
@@ -555,7 +553,7 @@ void H2ERI_H2_matvec_dense_mult_AOT(H2ERI_t h2eri, const double *x)
             int D_blk0_e = D_blk0->data[i_blk0 + 1];
             for (int i = D_blk0_s; i < D_blk0_e; i++)
             {
-                H2P_dense_mat_t Di = c_D_blks[i];
+                H2P_dense_mat_p Di = c_D_blks[i];
                 int node  = leaf_nodes[i];
                 int vec_s = mat_cluster[node * 2];
                 double       *y_spos = y + vec_s;
@@ -578,7 +576,7 @@ void H2ERI_H2_matvec_dense_mult_AOT(H2ERI_t h2eri, const double *x)
             int D_blk1_e = D_blk1->data[i_blk1 + 1];
             for (int i = D_blk1_s; i < D_blk1_e; i++)
             {
-                H2P_dense_mat_t Di = c_D_blks[i + n_leaf_node];
+                H2P_dense_mat_p Di = c_D_blks[i + n_leaf_node];
                 int node0  = r_inadm_pairs[2 * i];
                 int node1  = r_inadm_pairs[2 * i + 1];
                 int vec_s0 = mat_cluster[2 * node0];
@@ -615,9 +613,9 @@ void H2ERI_H2_matvec_dense_mult_AOT(H2ERI_t h2eri, const double *x)
 
 // H2 matvec dense multiplication for H2ERI
 // Need to calculate all D_{ij} matrices before using it
-void H2ERI_H2_matvec_dense_mult_JIT(H2ERI_t h2eri, const double *x)
+void H2ERI_H2_matvec_dense_mult_JIT(H2ERI_p h2eri, const double *x)
 {
-    H2Pack_t h2pack = h2eri->h2pack;
+    H2Pack_p h2pack = h2eri->h2pack;
     int n_thread         = h2pack->n_thread;
     int n_leaf_node      = h2pack->n_leaf_node;
     int *pt_cluster      = h2pack->pt_cluster;
@@ -627,12 +625,12 @@ void H2ERI_H2_matvec_dense_mult_JIT(H2ERI_t h2eri, const double *x)
     int *D_nrow          = h2pack->D_nrow;
     int *D_ncol          = h2pack->D_ncol;
     int *index_seq       = h2eri->index_seq;
-    H2P_int_vec_t D_blk0 = h2pack->D_blk0;
-    H2P_int_vec_t D_blk1 = h2pack->D_blk1;
+    H2P_int_vec_p D_blk0 = h2pack->D_blk0;
+    H2P_int_vec_p D_blk1 = h2pack->D_blk1;
     multi_sp_t *sp       = h2eri->sp;
-    H2P_thread_buf_t *thread_buf      = h2pack->tb;
-    simint_buff_t    *simint_buffs    = h2eri->simint_buffs;
-    eri_batch_buff_t *eri_batch_buffs = h2eri->eri_batch_buffs;
+    H2P_thread_buf_p *thread_buf      = h2pack->tb;
+    simint_buff_p    *simint_buffs    = h2eri->simint_buffs;
+    eri_batch_buff_p *eri_batch_buffs = h2eri->eri_batch_buffs;
     
     const int n_D0_blk = D_blk0->length - 1;
     const int n_D1_blk = D_blk1->length - 1;
@@ -640,9 +638,9 @@ void H2ERI_H2_matvec_dense_mult_JIT(H2ERI_t h2eri, const double *x)
     {
         int tid = omp_get_thread_num();
         
-        H2P_dense_mat_t  tmpD           = thread_buf[tid]->mat0;
-        simint_buff_t    simint_buff    = simint_buffs[tid];
-        eri_batch_buff_t eri_batch_buff = eri_batch_buffs[tid];
+        H2P_dense_mat_p  tmpD           = thread_buf[tid]->mat0;
+        simint_buff_p    simint_buff    = simint_buffs[tid];
+        eri_batch_buff_p eri_batch_buff = eri_batch_buffs[tid];
         
         double *y = thread_buf[tid]->y;
         
@@ -738,12 +736,12 @@ void H2ERI_H2_matvec_dense_mult_JIT(H2ERI_t h2eri, const double *x)
 
 // Build the Coulomb matrix using the density matrix, H2 representation
 // of the ERI tensor, and H2 matvec
-void H2ERI_H2_matvec(H2ERI_t h2eri, const double *x, double *y)
+void H2ERI_H2_matvec(H2ERI_p h2eri, const double *x, double *y)
 {
-    H2Pack_t h2pack   = h2eri->h2pack;
+    H2Pack_p h2pack   = h2eri->h2pack;
     int krnl_mat_size = h2pack->krnl_mat_size;
     int n_thread      = h2pack->n_thread;
-    H2P_thread_buf_t *thread_buf = h2pack->tb;
+    H2P_thread_buf_p *thread_buf = h2pack->tb;
     double st, et;
     
     // 1. Reset partial y result in each thread-local buffer to 0
@@ -762,7 +760,7 @@ void H2ERI_H2_matvec(H2ERI_t h2eri, const double *x, double *y)
     
     // 2. Forward transformation, calculate U_j^T * x_j
     st = get_wtime_sec();
-    H2P_matvec_fwd_transform(h2pack, x, y);
+    H2P_matvec_fwd_transform(h2pack, x);
     et = get_wtime_sec();
     h2pack->timers[4] += et - st;
     
@@ -818,7 +816,7 @@ void H2ERI_H2_matvec(H2ERI_t h2eri, const double *x, double *y)
 
 // Build the Coulomb matrix using the density matrix, H2 representation
 // of the ERI tensor, and H2 matvec
-void H2ERI_build_Coulomb(H2ERI_t h2eri, const double *den_mat, double *J_mat)
+void H2ERI_build_Coulomb(H2ERI_p h2eri, const double *den_mat, double *J_mat)
 {
     if (h2eri->unc_denmat_x == NULL)
     {

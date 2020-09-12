@@ -22,7 +22,7 @@ extern "C" {
 //   h2eri->sp_center : Array, size 3 * num_sp, each column is the center 
 //                      coordinate of a screened shell pair
 //   h2eri->sp_extent : Array, size num_sp, extents of each screened shell pair
-void H2ERI_process_shells(H2ERI_t h2eri);
+void H2ERI_process_shells(H2ERI_p h2eri);
 
 #ifdef __cplusplus
 }

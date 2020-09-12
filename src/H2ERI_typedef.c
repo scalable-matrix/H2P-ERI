@@ -8,9 +8,9 @@
 #include "H2ERI_typedef.h"
 
 // Initialize a H2ERI structure
-void H2ERI_init(H2ERI_t *h2eri_, const double scr_tol, const double ext_tol, const double QR_tol)
+void H2ERI_init(H2ERI_p *h2eri_, const double scr_tol, const double ext_tol, const double QR_tol)
 {
-    H2ERI_t h2eri = (H2ERI_t) malloc(sizeof(struct H2ERI));
+    H2ERI_p h2eri = (H2ERI_p) malloc(sizeof(struct H2ERI));
     assert(h2eri != NULL);
     
     h2eri->max_am  = 0;
@@ -48,7 +48,7 @@ void H2ERI_init(H2ERI_t *h2eri_, const double scr_tol, const double ext_tol, con
 }
 
 // Destroy a H2ERI structure
-void H2ERI_destroy(H2ERI_t h2eri)
+void H2ERI_destroy(H2ERI_p h2eri)
 {
     free(h2eri->shell_bf_sidx);
     free(h2eri->sp_nbfp);
@@ -69,9 +69,9 @@ void H2ERI_destroy(H2ERI_t h2eri)
     
     for (int i = 0; i < h2eri->h2pack->n_node; i++)
     {
-        H2P_int_vec_destroy(h2eri->J_pair[i]);
-        H2P_int_vec_destroy(h2eri->J_row[i]);
-        H2P_int_vec_destroy(h2eri->ovlp_ff_idx[i]);
+        H2P_int_vec_destroy(&h2eri->J_pair[i]);
+        H2P_int_vec_destroy(&h2eri->J_row[i]);
+        H2P_int_vec_destroy(&h2eri->ovlp_ff_idx[i]);
     }
     free(h2eri->J_pair);
     free(h2eri->J_row);
@@ -87,31 +87,25 @@ void H2ERI_destroy(H2ERI_t h2eri)
     
     if (h2eri->c_B_blks != NULL)
     {
-        H2P_dense_mat_t *c_B_blks = h2eri->c_B_blks;
+        H2P_dense_mat_p *c_B_blks = h2eri->c_B_blks;
         for (int i = 0; i < h2eri->h2pack->n_B; i++)
-        {
-            H2P_dense_mat_destroy(c_B_blks[i]);
-            free(c_B_blks[i]);
-        }
+            H2P_dense_mat_destroy(&c_B_blks[i]);
         free(c_B_blks);
     }
     
     if (h2eri->c_D_blks != NULL)
     {
-        H2P_dense_mat_t *c_D_blks = h2eri->c_D_blks;
+        H2P_dense_mat_p *c_D_blks = h2eri->c_D_blks;
         for (int i = 0; i < h2eri->h2pack->n_D; i++)
-        {
-            H2P_dense_mat_destroy(c_D_blks[i]);
-            free(c_D_blks[i]);
-        }
+            H2P_dense_mat_destroy(&c_D_blks[i]);
         free(c_D_blks);
     }
     
-    H2P_destroy(h2eri->h2pack);
+    H2P_destroy(&h2eri->h2pack);
 }
 
 // Print H2ERI statistic information
-void H2ERI_print_statistic(H2ERI_t h2eri)
+void H2ERI_print_statistic(H2ERI_p h2eri)
 {
     printf("================ H2ERI molecular system info ================\n");
     printf("  * Number of atoms / shells / basis functions : %d, %d, %d\n", h2eri->natom, h2eri->nshell, h2eri->num_bf);

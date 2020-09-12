@@ -14,7 +14,7 @@ extern "C" {
 //   BD_JIT : 0 or 1, if B and D matrices are computed just-in-time in matvec
 // Output parameter:
 //   h2eri : H2ERI structure with H2 representation matrices
-void H2ERI_build_H2(H2ERI_t h2eri, const int BD_JIT);
+void H2ERI_build_H2(H2ERI_p h2eri, const int BD_JIT);
 
 #ifdef __cplusplus
 }

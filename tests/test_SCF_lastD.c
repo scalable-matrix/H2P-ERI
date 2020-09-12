@@ -10,7 +10,7 @@
 #include "H2ERI.h"
 #include "utils.h"  // In H2Pack
 
-void TinyDFT_copy_shells_to_H2ERI(TinyDFT_t TinyDFT, H2ERI_t h2eri)
+void TinyDFT_copy_shells_to_H2ERI(TinyDFT_p TinyDFT, H2ERI_p h2eri)
 {
     h2eri->natom  = TinyDFT->natom;
     h2eri->nshell = TinyDFT->nshell;
@@ -29,7 +29,7 @@ void TinyDFT_copy_shells_to_H2ERI(TinyDFT_t TinyDFT, H2ERI_t h2eri)
 
 
 //  Functions from AnySCF
-void TinyDFT_SCF(TinyDFT_t TinyDFT, const int max_iter, const int J_op, const int K_op)
+void TinyDFT_SCF(TinyDFT_p TinyDFT, const int max_iter, const int J_op, const int K_op)
 {
     // Start SCF iterations
     printf("Self-Consistent Field iteration started...\n");
@@ -218,7 +218,7 @@ void TinyDFT_SCF(TinyDFT_t TinyDFT, const int max_iter, const int J_op, const in
     printf("Direct method constructed J matrix fro-norm      = %e\n", Jnorm);
 
     // H2ERI 1e-5
-    H2ERI_t h2eri5;
+    H2ERI_p h2eri5;
     H2ERI_init(&h2eri5, 1e-10, 1e-10, 1e-5);
     TinyDFT_copy_shells_to_H2ERI(TinyDFT, h2eri5);
     H2ERI_process_shells(h2eri5);
@@ -238,7 +238,7 @@ void TinyDFT_SCF(TinyDFT_t TinyDFT, const int max_iter, const int J_op, const in
     H2ERI_destroy(h2eri5);
 
     // H2ERI 1e-7 
-    H2ERI_t h2eri7;
+    H2ERI_p h2eri7;
     H2ERI_init(&h2eri7, 1e-10, 1e-10, 1e-7);
     TinyDFT_copy_shells_to_H2ERI(TinyDFT, h2eri7);
     H2ERI_process_shells(h2eri7);
@@ -307,7 +307,7 @@ int main(int argc, char **argv)
     if (K_op == 2) printf("DFT XC\n");
     
     // Initialize TinyDFT
-    TinyDFT_t TinyDFT;
+    TinyDFT_p TinyDFT;
     TinyDFT_init(&TinyDFT, argv[1], argv[2]);
     
     // Compute constant matrices and get initial guess for D

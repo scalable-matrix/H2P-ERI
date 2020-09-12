@@ -18,7 +18,7 @@
 //                         coordinate of a screened shell pair
 //   h2eri->sp_shell_idx : Array, size 2 * num_sp, each row is the contracted 
 //                         shell indices of a screened shell pair
-void H2ERI_screen_shell_pairs(H2ERI_t h2eri)
+void H2ERI_screen_shell_pairs(H2ERI_p h2eri)
 {
     int     nshell  = h2eri->nshell;
     shell_t *shells = h2eri->shells;
@@ -123,7 +123,7 @@ double H2ERI_calc_Gaussian_extent(
 //   h2eri->ext_tol   : Tolerance of shell pair extent
 // Output parameters:
 //   h2eri->sp_extent : Array, size h2eri->num_sp, extents of each SSP
-void H2ERI_calc_sp_extents(H2ERI_t h2eri)
+void H2ERI_calc_sp_extents(H2ERI_p h2eri)
 {
     h2eri->sp_extent = (double *) malloc(sizeof(double) * h2eri->num_sp);
     h2eri->sp_center = (double *) malloc(sizeof(double) * h2eri->num_sp * 3);
@@ -299,7 +299,7 @@ void H2ERI_calc_sp_extents(H2ERI_t h2eri)
 }
 
 // Process input shells for H2 partitioning
-void H2ERI_process_shells(H2ERI_t h2eri)
+void H2ERI_process_shells(H2ERI_p h2eri)
 {
     H2ERI_screen_shell_pairs(h2eri);
     H2ERI_calc_sp_extents(h2eri);

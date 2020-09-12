@@ -15,7 +15,7 @@ int main(int argc, char **argv)
         return 255;
     }
     
-    H2ERI_t h2eri;
+    H2ERI_p h2eri;
     H2ERI_init(&h2eri, 1e-10, 1e-10, atof(argv[4]));
     
     // 1. Read molecular file

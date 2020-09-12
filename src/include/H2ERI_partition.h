@@ -26,7 +26,7 @@ extern "C" {
 //   h2eri->simint_buffs  : Array, size h2pack->n_thread, thread local Simint ERI buffers
 //   h2eri->sp_shells     : Array, size 2 * num_sp, each column is a SSP
 //   h2eri->sp            : Array, size num_sp, all screened shell pairs
-void H2ERI_partition(H2ERI_t h2eri);
+void H2ERI_partition(H2ERI_p h2eri);
 
 #ifdef __cplusplus
 }
