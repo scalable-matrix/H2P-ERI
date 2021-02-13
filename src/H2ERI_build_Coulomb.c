@@ -219,20 +219,6 @@ void H2ERI_H2_matvec_intmd_mult_AOT(H2ERI_p h2eri, const double *x)
         thread_buf[tid]->timer = -get_wtime_sec();
         
         H2P_dense_mat_p tmp_v = thread_buf[tid]->mat0;
-
-        #pragma omp for schedule(static)
-        for (int i = 0; i < n_node; i++)
-        {
-            if (y1[i]->ld == 0) continue;
-            const int ncol = y1[i]->ncol;
-            // Need not to reset all copies of y1 to be 0 here, use the last element in
-            // each row as the beta value to rewrite / accumulate y1 results in GEMV
-            memset(y1[i]->data, 0, sizeof(double) * ncol);
-            for (int j = 1; j < n_thread; j++)
-                y1[i]->data[(j + 1) * ncol - 1] = 0.0;
-        }
-        
-        #pragma omp barrier
         
         #pragma omp for schedule(dynamic) nowait
         for (int i_blk = 0; i_blk < n_B_blk; i_blk++)
@@ -255,12 +241,6 @@ void H2ERI_H2_matvec_intmd_mult_AOT(H2ERI_p h2eri, const double *x)
                     int ncol1 = y1[node1]->ncol;
                     double *y1_dst_0 = y1[node0]->data + tid * ncol0;
                     double *y1_dst_1 = y1[node1]->data + tid * ncol1;
-                    double beta0 = y1_dst_0[ncol0 - 1];
-                    double beta1 = y1_dst_1[ncol1 - 1];
-                    y1_dst_0[ncol0 - 1] = 1.0;
-                    y1_dst_1[ncol1 - 1] = 1.0;
-                    if (beta0 == 0.0) memset(y1_dst_0, 0, sizeof(double) * Bi->nrow);
-                    if (beta1 == 0.0) memset(y1_dst_1, 0, sizeof(double) * Bi->ncol);
 
                     const double *x_in_0 = y0[node1]->data;
                     const double *x_in_1 = y0[node0]->data;
@@ -278,9 +258,6 @@ void H2ERI_H2_matvec_intmd_mult_AOT(H2ERI_p h2eri, const double *x)
                     const double *x_spos = x + vec_s1;
                     int ncol0        = y1[node0]->ncol;
                     double *y1_dst_0 = y1[node0]->data + tid * ncol0;
-                    double beta0     = y1_dst_0[ncol0 - 1];
-                    y1_dst_0[ncol0 - 1] = 1.0;
-                    if (beta0 == 0.0) memset(y1_dst_0, 0, sizeof(double) * Bi->nrow);
 
                     const double *x_in_0 = x_spos;
                     const double *x_in_1 = y0[node0]->data;
@@ -298,9 +275,6 @@ void H2ERI_H2_matvec_intmd_mult_AOT(H2ERI_p h2eri, const double *x)
                     const double *x_spos = x + vec_s0;
                     int ncol1        = y1[node1]->ncol;
                     double *y1_dst_1 = y1[node1]->data + tid * ncol1;
-                    double beta1     = y1_dst_1[ncol1 - 1];
-                    y1_dst_1[ncol1 - 1] = 1.0;
-                    if (beta1 == 0.0) memset(y1_dst_1, 0, sizeof(double) * Bi->ncol);
 
                     const double *x_in_0 = y0[node1]->data;
                     const double *x_in_1 = x_spos;
@@ -372,20 +346,6 @@ void H2ERI_H2_matvec_intmd_mult_JIT(H2ERI_p h2eri, const double *x)
         
         thread_buf[tid]->timer = -get_wtime_sec();
         
-        #pragma omp for schedule(static)
-        for (int i = 0; i < n_node; i++)
-        {
-            if (y1[i]->ld == 0) continue;
-            const int ncol = y1[i]->ncol;
-            // Need not to reset all copies of y1 to be 0 here, use the last element in
-            // each row as the beta value to rewrite / accumulate y1 results in GEMV
-            memset(y1[i]->data, 0, sizeof(double) * ncol);
-            for (int j = 1; j < n_thread; j++)
-                y1[i]->data[(j + 1) * ncol - 1] = 0.0;
-        }
-        
-        #pragma omp barrier
-        
         #pragma omp for schedule(dynamic) nowait
         for (int i_blk = 0; i_blk < n_B_blk; i_blk++)
         {
@@ -419,12 +379,6 @@ void H2ERI_H2_matvec_intmd_mult_JIT(H2ERI_p h2eri, const double *x)
                     int ncol1 = y1[node1]->ncol;
                     double *y1_dst_0 = y1[node0]->data + tid * ncol0;
                     double *y1_dst_1 = y1[node1]->data + tid * ncol1;
-                    double beta0 = y1_dst_0[ncol0 - 1];
-                    double beta1 = y1_dst_1[ncol1 - 1];
-                    y1_dst_0[ncol0 - 1] = 1.0;
-                    y1_dst_1[ncol1 - 1] = 1.0;
-                    if (beta0 == 0.0) memset(y1_dst_0, 0, sizeof(double) * tmpB->nrow);
-                    if (beta1 == 0.0) memset(y1_dst_1, 0, sizeof(double) * tmpB->ncol);
                     CBLAS_BI_GEMV(
                         tmpB->nrow, tmpB->ncol, tmpB->data, tmpB->ncol,
                         y0[node1]->data, y0[node0]->data, y1_dst_0, y1_dst_1
@@ -455,9 +409,6 @@ void H2ERI_H2_matvec_intmd_mult_JIT(H2ERI_p h2eri, const double *x)
                     const double *x_spos = x + vec_s1;
                     int ncol0        = y1[node0]->ncol;
                     double *y1_dst_0 = y1[node0]->data + tid * ncol0;
-                    double beta0     = y1_dst_0[ncol0 - 1];
-                    y1_dst_0[ncol0 - 1] = 1.0;
-                    if (beta0 == 0.0) memset(y1_dst_0, 0, sizeof(double) * tmpB->nrow);
                     CBLAS_BI_GEMV(
                         tmpB->nrow, tmpB->ncol, tmpB->data, tmpB->ncol,
                         x_spos, y0[node0]->data, y1_dst_0, y_spos
@@ -488,9 +439,6 @@ void H2ERI_H2_matvec_intmd_mult_JIT(H2ERI_p h2eri, const double *x)
                     const double *x_spos = x + vec_s0;
                     int ncol1        = y1[node1]->ncol;
                     double *y1_dst_1 = y1[node1]->data + tid * ncol1;
-                    double beta1     = y1_dst_1[ncol1 - 1];
-                    y1_dst_1[ncol1 - 1] = 1.0;
-                    if (beta1 == 0.0) memset(y1_dst_1, 0, sizeof(double) * tmpB->ncol);
                     CBLAS_BI_GEMV(
                         tmpB->nrow, tmpB->ncol, tmpB->data, tmpB->ncol,
                         y0[node1]->data, x_spos, y_spos, y1_dst_1
@@ -756,13 +704,13 @@ void H2ERI_H2_matvec(H2ERI_p h2eri, const double *x, double *y)
         for (int i = 0; i < krnl_mat_size; i++) y[i] = 0;
     }
     et = get_wtime_sec();
-    h2pack->timers[8] += et - st;
+    h2pack->timers[MV_VOP_TIMER_IDX] += et - st;
     
     // 2. Forward transformation, calculate U_j^T * x_j
     st = get_wtime_sec();
     H2P_matvec_fwd_transform(h2pack, x);
     et = get_wtime_sec();
-    h2pack->timers[4] += et - st;
+    h2pack->timers[MV_FWD_TIMER_IDX] += et - st;
     
     // 3. Intermediate multiplication, calculate B_{ij} * (U_j^T * x_j)
     st = get_wtime_sec();
@@ -773,13 +721,13 @@ void H2ERI_H2_matvec(H2ERI_p h2eri, const double *x, double *y)
         H2ERI_H2_matvec_intmd_mult_JIT(h2eri, x);
     }
     et = get_wtime_sec();
-    h2pack->timers[5] += et - st;
+    h2pack->timers[MV_MID_TIMER_IDX] += et - st;
     
     // 4. Backward transformation, calculate U_i * (B_{ij} * (U_j^T * x_j))
     st = get_wtime_sec();
     H2P_matvec_bwd_transform(h2pack, x, y);
     et = get_wtime_sec();
-    h2pack->timers[6] += et - st;
+    h2pack->timers[MV_BWD_TIMER_IDX] += et - st;
     
     // 5. Dense multiplication, calculate D_i * x_i
     st = get_wtime_sec();
@@ -790,7 +738,7 @@ void H2ERI_H2_matvec(H2ERI_p h2eri, const double *x, double *y)
         H2ERI_H2_matvec_dense_mult_JIT(h2eri, x);
     }
     et = get_wtime_sec();
-    h2pack->timers[7] += et - st;
+    h2pack->timers[MV_DEN_TIMER_IDX] += et - st;
     
     // 6. Reduce sum partial y results
     st = get_wtime_sec();
@@ -807,9 +755,9 @@ void H2ERI_H2_matvec(H2ERI_p h2eri, const double *x, double *y)
             for (int i = spos; i < spos + len; i++) y[i] += y_src[i];
         }
     }
-    h2pack->mat_size[7] = (2 * n_thread + 1) * h2pack->krnl_mat_size;
+    h2pack->mat_size[MV_VOP_SIZE_IDX] = (2 * n_thread + 1) * h2pack->krnl_mat_size;
     et = get_wtime_sec();
-    h2pack->timers[8] += et - st;
+    h2pack->timers[MV_VOP_TIMER_IDX] += et - st;
     
     h2pack->n_matvec++;
 }

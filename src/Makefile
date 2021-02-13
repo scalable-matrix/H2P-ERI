@@ -11,7 +11,7 @@ OPENBLAS_INSTALL_DIR = /home/mkurisu/Workspace/OpenBLAS-0.3.8/install
 
 CC      = icc
 DEF     = 
-INC     = -I./include -I$(SIMINT_INSTALL_DIR)/include -I$(H2PACK_INSTALL_DIR)/src/include
+INC     = -I./include -I$(SIMINT_INSTALL_DIR)/include -I$(H2PACK_INSTALL_DIR)/include
 CFLAGS  = $(INC) -Wall -g -std=gnu99 -O3 $(DEF)
 
 ifeq ($(CC), icc)
