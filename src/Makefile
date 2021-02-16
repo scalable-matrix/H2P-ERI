@@ -1,6 +1,6 @@
 LIB   = libH2PERI.a
 OBJS  = CMS.o H2ERI_typedef.o H2ERI_shell_operations.o H2ERI_partition.o \
-        H2ERI_build_H2.o H2ERI_build_Coulomb.o
+        H2ERI_build_H2.o H2ERI_build_Coulomb.o H2ERI_build_exchange.o
 
 USE_MKL      = 1
 USE_OPENBLAS = 0
@@ -42,7 +42,7 @@ CMS.o: include/*.h CMS.c
 
 H2ERI_typedef.o: include/*.h H2ERI_typedef.c
 	$(CC) $(CFLAGS) H2ERI_typedef.c -c 
-    
+
 H2ERI_shell_operations.o: include/*.h H2ERI_shell_operations.c
 	$(CC) $(CFLAGS) H2ERI_shell_operations.c -c 
 
@@ -54,6 +54,9 @@ H2ERI_build_H2.o: include/*.h H2ERI_build_H2.c
 
 H2ERI_build_Coulomb.o: include/*.h H2ERI_build_Coulomb.c
 	$(CC) $(CFLAGS) H2ERI_build_Coulomb.c -c 
+
+H2ERI_build_exchange.o: include/*.h H2ERI_build_exchange.c
+	$(CC) $(CFLAGS) H2ERI_build_exchange.c -c 
 
 clean:
 	rm $(OBJS) $(LIB)

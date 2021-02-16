@@ -8,6 +8,7 @@
 #include "H2Pack_matvec.h"
 #include "H2Pack_utils.h"
 #include "H2ERI_typedef.h"
+#include "H2ERI_build_Coulomb.h"
 #include "utils.h"  // In H2Pack
 
 // These two external functions are in H2Pack_matvec.c, but not exposed in H2Pack_utils.h

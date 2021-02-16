@@ -5,6 +5,7 @@
 #include <math.h>
 
 #include "H2ERI_typedef.h"
+#include "H2ERI_shell_operations.h"
 
 // Schwarz screening for shell pairs
 // Input parameters:

@@ -4,7 +4,7 @@
 // H2Pack data structure and operations
 #include "H2Pack.h"
 
-// CMS interface to Simint
+// CMS interface to SIMINT
 #include "CMS.h"
 
 // H2ERI data structure
@@ -21,5 +21,8 @@
 
 // H2ERI Coulomb matrix construction
 #include "H2ERI_build_Coulomb.h"
+
+// H2ERI exchange matrix construction
+#include "H2ERI_build_exchange.h"
 
 #endif

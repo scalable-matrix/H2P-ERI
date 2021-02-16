@@ -17,6 +17,7 @@ struct H2ERI
     int    natom;                       // Number of atoms (from input file)
     int    nshell;                      // Number of contracted shells (from input file)
     int    max_am;                      // Maximum angular momentum in the system
+    int    max_shell_nbf;               // Maximum basis functions in a shell, == NCART(max_am)
     int    num_bf;                      // Number of basis functions in the system, == shell_bf_sidx[nshell]
     int    num_sp;                      // Number of screened shell pairs (SSP)
     int    num_sp_bfp;                  // Number of SSP basis function pairs, == sp_bfp_sidx[num_sp]
@@ -27,6 +28,16 @@ struct H2ERI
     int    *sp_bfp_sidx;                // Array, size num_sp+1, indices of each SSP's first basis function pair
     int    *sp_shell_idx;               // Array, size 2 * num_sp, each row is the contracted shell indices of a SSP
     int    *index_seq;                  // Array, size num_sp, [0, num_sp-1]
+    int    *node_adm_pairs;             // Array, size unknown, each node's admissible node pairs
+    int    *node_adm_pairs_sidx;        // Array, size h2pack->n_node+1, index of each node's first admissible node pair
+    int    *node_inadm_pairs;           // Array, size unknown, each node's inadmissible node pairs
+    int    *node_inadm_pairs_sidx;      // Array, size h2pack->n_node+1, index of each node's first inadmissible node pair
+    int    *plist;                      // Array, size <= 2*num_sp, each shell's screened pair shells
+    int    *plist_idx;                  // Array, size <= 2*num_sp, corresponding indices of each shell's screened pair shells in sp_bfp_sidx
+    int    *plist_sidx;                 // Array, size nshell+1, index of each node's first item in plist & plist_idx
+    int    *dlist;                      // Array, size unknown, each shell's pair shells s.t. the corresponding density matrix block is large enough
+    int    *dlist_sidx;                 // Array, size nshell+1, index of each node's first item in dlist
+    void   **thread_Kmat_workbuf;       // Array, size h2pack->n_thread, pointers to each thread's K mat build work buffer
     double scr_tol;                     // Tolerance of Schwarz screening
     double ext_tol;                     // Tolerance of shell pair extent
     double *sp_center;                  // Array, size 3 * num_sp, each column is a SSP's center
