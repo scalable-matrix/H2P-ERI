@@ -281,54 +281,76 @@ void H2ERI_calc_node_adm_inadm_pairs(H2ERI_p h2eri)
     H2Pack_p h2pack = h2eri->h2pack;
     int n_node         = h2pack->n_node;
     int n_node1        = h2pack->n_node + 1;
-    int n_adm_pair     = h2pack->n_r_adm_pair;
-    int n_inadm_pair   = h2pack->n_r_inadm_pair;
+    int n_leaf_node    = h2pack->n_leaf_node;
+    int n_r_adm_pair   = h2pack->n_r_adm_pair;
+    int n_r_inadm_pair = h2pack->n_r_inadm_pair;
+    int n_adm_pair     = 2 * n_r_adm_pair;
+    int n_inadm_pair   = 2 * n_r_inadm_pair;
     int *r_adm_pairs   = h2pack->r_adm_pairs;
     int *r_inadm_pairs = h2pack->r_inadm_pairs;
+    int *leaf_nodes    = h2pack->height_nodes;
     int *node_adm_pairs_sidx   = (int *) malloc(sizeof(int) * n_node1);
     int *node_inadm_pairs_sidx = (int *) malloc(sizeof(int) * n_node1);
     int *node_adm_pairs        = (int *) malloc(sizeof(int) * n_adm_pair);
+    int *node_adm_pairs_idx    = (int *) malloc(sizeof(int) * n_adm_pair);
     int *node_inadm_pairs      = (int *) malloc(sizeof(int) * n_inadm_pair);
+    int *node_inadm_pairs_idx  = (int *) malloc(sizeof(int) * n_inadm_pair);
     ASSERT_PRINTF(node_adm_pairs_sidx   != NULL, "Failed to allocate node_adm_pairs_sidx   of size %d\n", n_node1);
     ASSERT_PRINTF(node_inadm_pairs_sidx != NULL, "Failed to allocate node_inadm_pairs_sidx of size %d\n", n_node1);
     ASSERT_PRINTF(node_adm_pairs        != NULL, "Failed to allocate node_adm_pairs        of size %d\n", n_adm_pair);
+    ASSERT_PRINTF(node_adm_pairs_idx    != NULL, "Failed to allocate node_adm_pairs_idx    of size %d\n", n_adm_pair);
     ASSERT_PRINTF(node_inadm_pairs      != NULL, "Failed to allocate node_inadm_pairs      of size %d\n", n_inadm_pair);
+    ASSERT_PRINTF(node_inadm_pairs_idx  != NULL, "Failed to allocate node_inadm_pairs_idx  of size %d\n", n_inadm_pair);
     
     memset(node_adm_pairs_sidx, 0, sizeof(int) * n_node1);
-    for (int i = 0; i < n_adm_pair; i++)
-    {
-        int node0 = r_adm_pairs[2 * i];
-        node_adm_pairs_sidx[node0 + 1]++;
-    }
-    for (int i = 2; i <= n_node; i++)
-        node_adm_pairs_sidx[i] += node_adm_pairs_sidx[i - 1];
-    for (int i = 0; i < n_adm_pair; i++)
+    for (int i = 0; i < n_r_adm_pair; i++)
     {
         int node0 = r_adm_pairs[2 * i];
         int node1 = r_adm_pairs[2 * i + 1];
-        int idx   = node_adm_pairs_sidx[node0];
-        node_adm_pairs[idx] = node1;
+        node_adm_pairs_sidx[node0 + 1]++;
+        node_adm_pairs_sidx[node1 + 1]++;
+    }
+    for (int i = 2; i <= n_node; i++)
+        node_adm_pairs_sidx[i] += node_adm_pairs_sidx[i - 1];
+    for (int i = 0; i < n_r_adm_pair; i++)
+    {
+        int node0 = r_adm_pairs[2 * i];
+        int node1 = r_adm_pairs[2 * i + 1];
+        int idx0  = node_adm_pairs_sidx[node0];
+        int idx1  = node_adm_pairs_sidx[node1];
+        node_adm_pairs[idx0] = node1;
+        node_adm_pairs[idx1] = node0;
+        node_adm_pairs_idx[idx0] = i;
+        node_adm_pairs_idx[idx1] = i - n_r_adm_pair;
         node_adm_pairs_sidx[node0]++;
+        node_adm_pairs_sidx[node1]++;
     }
     for (int i = n_node; i >= 1; i--)
         node_adm_pairs_sidx[i] = node_adm_pairs_sidx[i - 1];
     node_adm_pairs_sidx[0] = 0;
 
     memset(node_inadm_pairs_sidx, 0, sizeof(int) * n_node1);
-    for (int i = 0; i < n_inadm_pair; i++)
-    {
-        int node0 = r_inadm_pairs[2 * i];
-        node_inadm_pairs_sidx[node0 + 1]++;
-    }
-    for (int i = 2; i <= n_node; i++)
-        node_inadm_pairs_sidx[i] += node_inadm_pairs_sidx[i - 1];
-    for (int i = 0; i < n_inadm_pair; i++)
+    for (int i = 0; i < n_r_inadm_pair; i++)
     {
         int node0 = r_inadm_pairs[2 * i];
         int node1 = r_inadm_pairs[2 * i + 1];
-        int idx   = node_inadm_pairs_sidx[node0];
-        node_inadm_pairs[idx] = node1;
+        node_inadm_pairs_sidx[node0 + 1]++;
+        node_inadm_pairs_sidx[node1 + 1]++;
+    }
+    for (int i = 2; i <= n_node; i++)
+        node_inadm_pairs_sidx[i] += node_inadm_pairs_sidx[i - 1];
+    for (int i = 0; i < n_r_inadm_pair; i++)
+    {
+        int node0 = r_inadm_pairs[2 * i];
+        int node1 = r_inadm_pairs[2 * i + 1];
+        int idx0  = node_inadm_pairs_sidx[node0];
+        int idx1  = node_inadm_pairs_sidx[node1];
+        node_inadm_pairs[idx0] = node1;
+        node_inadm_pairs[idx1] = node0;
+        node_inadm_pairs_idx[idx0] = i;
+        node_inadm_pairs_idx[idx1] = i - n_r_inadm_pair;
         node_inadm_pairs_sidx[node0]++;
+        node_inadm_pairs_sidx[node1]++;
     }
     for (int i = n_node; i >= 1; i--)
         node_inadm_pairs_sidx[i] = node_inadm_pairs_sidx[i - 1];
@@ -338,6 +360,8 @@ void H2ERI_calc_node_adm_inadm_pairs(H2ERI_p h2eri)
     h2eri->node_inadm_pairs_sidx = node_inadm_pairs_sidx;
     h2eri->node_adm_pairs        = node_adm_pairs;
     h2eri->node_inadm_pairs      = node_inadm_pairs;
+    h2eri->node_adm_pairs_idx    = node_adm_pairs_idx;
+    h2eri->node_inadm_pairs_idx  = node_inadm_pairs_idx;
 }
 
 // Calculate plist, plist_idx, plist_sidx for exchange matrix construction 
@@ -399,7 +423,7 @@ void H2ERI_build_plist(H2ERI_p h2eri)
     {
         int sidx = plist_sidx[i];
         int len  = plist_sidx[i + 1] - sidx;
-        H2P_qsort_int_key_val(plist + sidx, plist_idx + sidx, 0, len);
+        H2P_qsort_int_key_val(plist + sidx, plist_idx + sidx, 0, len - 1);
     }
 
     h2eri->plist      = plist;
@@ -414,7 +438,7 @@ void H2ERI_partition(H2ERI_p h2eri)
     H2ERI_calc_bf_bfp_info(h2eri);
     H2ERI_calc_box_extent (h2eri);
     H2ERI_calc_mat_cluster(h2eri);
-    //H2ERI_calc_node_adm_inadm_pairs(h2eri);
+    H2ERI_calc_node_adm_inadm_pairs(h2eri);
     H2ERI_build_plist(h2eri);
     H2ERI_exchange_workbuf_init(h2eri);
     

@@ -28,9 +28,11 @@ struct H2ERI
     int    *sp_bfp_sidx;                // Array, size num_sp+1, indices of each SSP's first basis function pair
     int    *sp_shell_idx;               // Array, size 2 * num_sp, each row is the contracted shell indices of a SSP
     int    *index_seq;                  // Array, size num_sp, [0, num_sp-1]
-    int    *node_adm_pairs;             // Array, size unknown, each node's admissible node pairs
+    int    *node_adm_pairs;             // Array, size 2 * h2pack->n_r_adm_pair, each node's admissible node pairs
+    int    *node_adm_pairs_idx;         // Array, size 2 * h2pack->n_r_adm_pair, indices of each node's admissible node pairs in h2pack->r_adm_pairs
     int    *node_adm_pairs_sidx;        // Array, size h2pack->n_node+1, index of each node's first admissible node pair
-    int    *node_inadm_pairs;           // Array, size unknown, each node's inadmissible node pairs
+    int    *node_inadm_pairs;           // Array, size 2 * h2pack->n_r_inadm_pair, each node's inadmissible node pairs
+    int    *node_inadm_pairs_idx;       // Array, size 2 * h2pack->n_r_inadm_pair, indices of each node's inadmissible node pairs in h2pack->r_inadm_pairs
     int    *node_inadm_pairs_sidx;      // Array, size h2pack->n_node+1, index of each node's first inadmissible node pair
     int    *plist;                      // Array, size <= 2*num_sp, each shell's screened pair shells
     int    *plist_idx;                  // Array, size <= 2*num_sp, corresponding indices of each shell's screened pair shells in sp_bfp_sidx
@@ -50,8 +52,7 @@ struct H2ERI
     multi_sp_t       *sp;               // Array, size num_sp, SSP
     H2P_int_vec_p    *J_pair;           // Array, size h2pack->n_node, skeleton shell pair indices of each node
     H2P_int_vec_p    *J_row;            // Array, size h2pack->n_node, skeleton row indices in each node's shell pairs
-    H2P_int_vec_p    *ovlp_ff_idx;      // Array, size h2pack->n_node, i-th vector contains the far field 
-                                        // points whose extents are overlapped with the near field of i-th node
+    H2P_int_vec_p    *ovlp_ff_idx;      // Array, size h2pack->n_node, i-th vector contains the far field points whose extents are overlapped with the near field of i-th node
     simint_buff_p    *simint_buffs;     // Array, size h2pack->n_thread, simint_buff structures for each thread
     eri_batch_buff_p *eri_batch_buffs;  // Array, size h2pack->n_thread, eri_batch_buff structures for each thread
     H2P_dense_mat_p  *c_B_blks;         // Array, size h2pack->n_B, compressed B blocks

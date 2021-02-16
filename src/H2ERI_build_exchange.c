@@ -68,6 +68,7 @@ struct Kmat_workbuf
     int    *node_vec_out_sidx;  // Size h2pack->n_node+1, indices of each node's node_vec_out
     int    *y0_sidx;            // Size h2pack->n_node+1, indices of each node's y0
     int    *y1_sidx;            // Size h2pack->n_node+1, indices of each node's y1
+    int    *tmp_arr;            // Size h2pack->n_node, temporary array
     int    *int_buffer;         // == all int* arrays except out_vec_idx, to reduce memory fragments 
     double *vec_in;             // Size unknown, partial matmul input vector
     double *vec_out;            // Size unknown, partial matmul output vector restricted from each node's output
@@ -127,11 +128,12 @@ void H2ERI_exchange_workbuf_init(H2ERI_p h2eri)
         int_buffer_size += n_node;
         int_buffer_size += nshell * max_shell_nbf * max_shell_nbf;
         int_buffer_size += nshell * max_shell_nbf * max_shell_nbf;
-        // node_vec_in_sidx, node_vec_out_sidx, y0_sidx, y1_sidx
+        // node_vec_in_sidx, node_vec_out_sidx, y0_sidx, y1_sidx, tmp_arr
         int_buffer_size += n_node + 1;
         int_buffer_size += n_node + 1;
         int_buffer_size += n_node + 1;
         int_buffer_size += n_node + 1;
+        int_buffer_size += n_node;
 
         int *int_buffer = (int *) malloc(sizeof(int) * int_buffer_size);
         ASSERT_PRINTF(int_buffer != NULL, "Failed to allocate int_buffer of size %d\n", int_buffer_size);
@@ -156,6 +158,7 @@ void H2ERI_exchange_workbuf_init(H2ERI_p h2eri)
         workbuf->node_vec_out_sidx = workbuf->node_vec_in_sidx  + n_node + 1;
         workbuf->y0_sidx           = workbuf->node_vec_out_sidx + n_node + 1;
         workbuf->y1_sidx           = workbuf->y0_sidx + n_node  + 1;
+        workbuf->tmp_arr           = workbuf->y1_sidx + n_node  + 1;
 
         workbuf->out_vec_idx_size  = 0;
         workbuf->out_vec_idx       = NULL;
@@ -264,6 +267,7 @@ static void H2ERI_find_intersect(
             intersect[cnt] = a[i];
             a_idx[cnt] = i;
             i++; j++;
+            cnt++;
         } else {
             int ai = a[i];
             int bj = b[j];
@@ -477,13 +481,15 @@ static void H2ERI_exchange_workbuf_alloc_dbl_buffer(
     int col_n_leaf_node   = workbuf->col_n_leaf_node;
     int *col_leaf_nodes   = workbuf->col_leaf_nodes;
     int *node_vec_in_sidx = workbuf->node_vec_in_sidx;
+    int *tmp_arr          = workbuf->tmp_arr;
     node_vec_in_sidx[0] = 0;
-    for (int i = 0; i < col_n_leaf_node; i++)
+    memset(tmp_arr, 0, sizeof(int) * n_node);
+    for (int i = 0; i < col_n_leaf_node; i++) tmp_arr[col_leaf_nodes[i]] = 1;
+    for (int i = 0; i < n_node; i++)
     {
-        int node = col_leaf_nodes[i];
-        int mat_cluster_s = mat_cluster[2 * node];
-        int mat_cluster_e = mat_cluster[2 * node + 1];
-        node_vec_in_size += (mat_cluster_e - mat_cluster_s + 1) * nvec;
+        int mat_cluster_s = mat_cluster[2 * i];
+        int mat_cluster_e = mat_cluster[2 * i + 1];
+        if (tmp_arr[i]) node_vec_in_size += (mat_cluster_e - mat_cluster_s + 1) * nvec;
         node_vec_in_sidx[i + 1] = node_vec_in_size;
     }
 
@@ -493,12 +499,13 @@ static void H2ERI_exchange_workbuf_alloc_dbl_buffer(
     int *row_leaf_nodes    = workbuf->row_leaf_nodes;
     int *node_vec_out_sidx = workbuf->node_vec_out_sidx;
     node_vec_out_sidx[0] = 0;
-    for (int i = 0; i < row_n_leaf_node; i++)
+    memset(tmp_arr, 0, sizeof(int) * n_node);
+    for (int i = 0; i < row_n_leaf_node; i++) tmp_arr[row_leaf_nodes[i]] = 1;
+    for (int i = 0; i < n_node; i++)
     {
-        int node = row_leaf_nodes[i];
-        int mat_cluster_s = mat_cluster[2 * node];
-        int mat_cluster_e = mat_cluster[2 * node + 1];
-        node_vec_out_size += (mat_cluster_e - mat_cluster_s + 1) * nvec;
+        int mat_cluster_s = mat_cluster[2 * i];
+        int mat_cluster_e = mat_cluster[2 * i + 1];
+        if (tmp_arr[i]) node_vec_out_size += (mat_cluster_e - mat_cluster_s + 1) * nvec;
         node_vec_out_sidx[i + 1] = node_vec_out_size;
     }
 
@@ -540,13 +547,19 @@ static void H2ERI_exchange_workbuf_alloc_dbl_buffer(
         ASSERT_PRINTF(workbuf->dbl_buffer != NULL, "Failed to allocate dbl_buffer of size %d\n", dbl_buffer_size);
     }
     memset(workbuf->dbl_buffer, 0, sizeof(double) * dbl_buffer_size);
-    workbuf->vec_in       = workbuf->dbl_buffer;
-    workbuf->vec_out      = workbuf->vec_in       + vec_in_size;
-    workbuf->node_vec_in  = workbuf->vec_out      + vec_out_size;
-    workbuf->node_vec_out = workbuf->node_vec_in  + node_vec_in_size;
-    workbuf->y0           = workbuf->node_vec_out + node_vec_out_size;
-    workbuf->y1           = workbuf->y0           + y0_size;
-    workbuf->tmp_K        = workbuf->y1           + y1_size;
+    workbuf->vec_in_size       = vec_in_size;
+    workbuf->vec_out_size      = vec_out_size;
+    workbuf->node_vec_in_size  = node_vec_in_size;
+    workbuf->node_vec_out_size = node_vec_out_size;
+    workbuf->y0_size           = y0_size;
+    workbuf->y1_size           = y1_size;
+    workbuf->vec_in            = workbuf->dbl_buffer;
+    workbuf->vec_out           = workbuf->vec_in       + vec_in_size;
+    workbuf->node_vec_in       = workbuf->vec_out      + vec_out_size;
+    workbuf->node_vec_out      = workbuf->node_vec_in  + node_vec_in_size;
+    workbuf->y0                = workbuf->node_vec_out + node_vec_out_size;
+    workbuf->y1                = workbuf->y0           + y0_size;
+    workbuf->tmp_K             = workbuf->y1           + y1_size;
 }
 
 // Gather H2 partial matmul input vectors from density matrix
@@ -610,15 +623,15 @@ static void H2ERI_build_exchange_gather_vec_in(
     double *node_vec_in      = workbuf->node_vec_in;
     for (int i = 0; i < col_n_leaf_node; i++)
     {
-        int node = col_leaf_nodes[i];
-        double *node_vec_in_i = node_vec_in + node_vec_in_sidx[i];
-        int mat_cluster_s = mat_cluster[2 * node];
-        int mat_cluster_e = mat_cluster[2 * node + 1];
+        int    node           = col_leaf_nodes[i];
+        int    mat_cluster_s  = mat_cluster[2 * node];
+        int    mat_cluster_e  = mat_cluster[2 * node + 1];
+        double *leaf_i_vec_in = node_vec_in + node_vec_in_sidx[node];
         for (int j = 0; j < col_idx_len; j++)
         {
             if ((mat_cluster_s <= col_idx[j]) && (col_idx[j] <= mat_cluster_e))
             {
-                double *dst = node_vec_in_i + (j - mat_cluster_s) * nvec;
+                double *dst = leaf_i_vec_in + (col_idx[j] - mat_cluster_s) * nvec;
                 double *src = vec_in + j * nvec;
                 memcpy(dst, src, sizeof(double) * nvec);
             }
@@ -651,17 +664,18 @@ static void H2ERI_build_exchange_scatter_vec_out(
     double *node_vec_out      = workbuf->node_vec_out;
     for (int i = 0; i < row_n_leaf_node; i++)
     {
-        int node = row_leaf_nodes[i];
-        int out_vec_idx_s = out_vec_sidx[i];
-        int out_vec_idx_e = out_vec_sidx[i + 1];
-        int mat_cluster_s = mat_cluster[2 * node];
-        double *node_vec_out_i = node_vec_out + node_vec_out_sidx[i];
-        for (int row_idx0 = out_vec_idx_s; row_idx0 < out_vec_idx_e; row_idx0++)
+        int    node                = row_leaf_nodes[i];
+        int    mat_cluster_s       = mat_cluster[2 * node];
+        int    leaf_i_out_vec_len  = out_vec_sidx[i + 1] - out_vec_sidx[i];
+        int    *leaf_i_out_vec_idx = out_vec_idx + out_vec_sidx[i];
+        double *leaf_i_vec_out     = node_vec_out + node_vec_out_sidx[node];
+        for (int j = 0; j < leaf_i_out_vec_len; j++)
         {
+            int row_idx0 = leaf_i_out_vec_idx[j];
             int row_idx1 = row_idx_pmt[row_idx0];
             int row_idx2 = row_idx_ascend[row_idx0];
             double *dst = vec_out + row_idx1 * nvec;
-            double *src = node_vec_out_i + (row_idx2 - mat_cluster_s) * nvec;
+            double *src = leaf_i_vec_out + (row_idx2 - mat_cluster_s) * nvec;
             memcpy(dst, src, sizeof(double) * nvec);
         }
     }
@@ -786,38 +800,60 @@ static void H2ERI_build_exchange_dlist(H2ERI_p h2eri, const double *den_mat)
 // Perform matmul for a B or D block blk which might be a dense block 
 // or a low-rank approximation blk = U * V
 static void H2ERI_BD_blk_matmul(
-    H2P_dense_mat_p blk, H2P_dense_mat_p tmp_v,
+    const int trans_blk, H2P_dense_mat_p blk, H2P_dense_mat_p tmp_v,
     const double *mat_in, double *mat_out, const int nvec
 )
 {
     if (blk->ld > 0)
     {
-        CBLAS_GEMM(
-            CblasRowMajor, CblasNoTrans, CblasNoTrans, blk->nrow, nvec, blk->ncol,
-            1.0, blk->data, blk->ncol, mat_in, nvec, 1.0, mat_out, nvec
-        );
+        if (trans_blk == 0)
+        {
+            CBLAS_GEMM(
+                CblasRowMajor, CblasNoTrans, CblasNoTrans, blk->nrow, nvec, blk->ncol,
+                1.0, blk->data, blk->ncol, mat_in, nvec, 1.0, mat_out, nvec
+            );
+        } else {
+            CBLAS_GEMM(
+                CblasRowMajor, CblasTrans, CblasNoTrans, blk->ncol, nvec, blk->nrow,
+                1.0, blk->data, blk->ncol, mat_in, nvec, 1.0, mat_out, nvec
+            );
+        }
     } else {
         int    blk_rank = -blk->ld;
         double *U_mat   = blk->data;
         double *V_mat   = U_mat + blk->nrow * blk_rank;
-        H2P_dense_mat_resize(tmp_v, blk_rank, nvec);
         // U: blk->nrow * blk_rank
         // V: blk_rank  * blk->ncol
-        // mat_out = (U * V) * mat_in = U * (V * mat_in)
-        CBLAS_GEMM(
-            CblasRowMajor, CblasNoTrans, CblasNoTrans, blk_rank, nvec, blk->ncol,
-            1.0, V_mat, blk->ncol, mat_in, nvec, 0.0, tmp_v->data, nvec
-        );
-        CBLAS_GEMM(
-            CblasRowMajor, CblasNoTrans, CblasNoTrans, blk->nrow, nvec, blk_rank,
-            1.0, U_mat, blk_rank, tmp_v->data, nvec, 1.0, mat_out, nvec
-        );
+        H2P_dense_mat_resize(tmp_v, blk_rank, nvec);
+        if (trans_blk == 0)
+        {
+            // mat_out = (U * V) * mat_in = U * (V * mat_in)
+            CBLAS_GEMM(
+                CblasRowMajor, CblasNoTrans, CblasNoTrans, blk_rank, nvec, blk->ncol,
+                1.0, V_mat, blk->ncol, mat_in, nvec, 0.0, tmp_v->data, nvec
+            );
+            CBLAS_GEMM(
+                CblasRowMajor, CblasNoTrans, CblasNoTrans, blk->nrow, nvec, blk_rank,
+                1.0, U_mat, blk_rank, tmp_v->data, nvec, 1.0, mat_out, nvec
+            );
+        } else {
+            // mat_out = (U * V)^T * mat_in = V^T * (U^T * mat_in)
+            CBLAS_GEMM(
+                CblasRowMajor, CblasTrans, CblasNoTrans, blk_rank, nvec, blk->nrow,
+                1.0, U_mat, blk_rank, mat_in, nvec, 1.0, tmp_v->data, nvec
+            );
+            CBLAS_GEMM(
+                CblasRowMajor, CblasTrans, CblasNoTrans, blk->ncol, nvec, blk_rank,
+                1.0, V_mat, blk->ncol, tmp_v->data, nvec, 0.0, mat_out, nvec
+            );
+        }
     }
 }
 
 static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p workbuf, const int tid)
 {
     H2Pack_p h2pack = h2eri->h2pack;
+    int n_node         = h2pack->n_node;
     int max_child      = h2pack->max_child;
     int n_leaf_node    = h2pack->n_leaf_node;
     int n_r_adm_pair   = h2pack->n_r_adm_pair;
@@ -836,19 +872,26 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
     H2P_dense_mat_p  *c_D_blks = h2eri->c_D_blks;
     H2P_dense_mat_p  tmp_v     = h2pack->tb[tid]->mat0;
 
-    int    nvec               = workbuf->nvec;
-    int    row_max_level      = workbuf->row_max_level;
-    int    col_max_level      = workbuf->col_max_level;
-    int    *row_node_flag     = workbuf->row_node_flag;
-    int    *col_node_flag     = workbuf->col_node_flag;
-    int    *node_vec_in_sidx  = workbuf->node_vec_in_sidx;
-    int    *node_vec_out_sidx = workbuf->node_vec_out_sidx;
-    int    *y0_sidx           = workbuf->y0_sidx;
-    int    *y1_sidx           = workbuf->y1_sidx;
-    double *node_vec_in       = workbuf->node_vec_in;
-    double *node_vec_out      = workbuf->node_vec_out;
-    double *y0                = workbuf->y0;
-    double *y1                = workbuf->y1;
+    int *node_adm_pairs        = h2eri->node_adm_pairs;
+    int *node_adm_pairs_idx    = h2eri->node_adm_pairs_idx;
+    int *node_adm_pairs_sidx   = h2eri->node_adm_pairs_sidx;
+    int *node_inadm_pairs      = h2eri->node_inadm_pairs;
+    int *node_inadm_pairs_idx  = h2eri->node_inadm_pairs_idx;
+    int *node_inadm_pairs_sidx = h2eri->node_inadm_pairs_sidx;
+
+    int    nvec                = workbuf->nvec;
+    int    row_max_level       = workbuf->row_max_level;
+    int    col_max_level       = workbuf->col_max_level;
+    int    *row_node_flag      = workbuf->row_node_flag;
+    int    *col_node_flag      = workbuf->col_node_flag;
+    int    *node_vec_in_sidx   = workbuf->node_vec_in_sidx;
+    int    *node_vec_out_sidx  = workbuf->node_vec_out_sidx;
+    int    *y0_sidx            = workbuf->y0_sidx;
+    int    *y1_sidx            = workbuf->y1_sidx;
+    double *node_vec_in        = workbuf->node_vec_in;
+    double *node_vec_out       = workbuf->node_vec_out;
+    double *y0                 = workbuf->y0;
+    double *y1                 = workbuf->y1;
 
     double st, et;
     double *timers = workbuf->timers;
@@ -858,17 +901,23 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
     // 1. Find forward & backward transformation minimal levels
     st = get_wtime_sec();
     int fwd_minlvl = 19241112, bwd_minlvl = 19241112;
-    for (int i = 0; i < n_r_adm_pair; i++)
+    for (int node0 = 0; node0 < n_node; node0++)
     {
-        int node0 = r_adm_pairs[2 * i];
-        int node1 = r_adm_pairs[2 * i + 1];
-        if (row_node_flag[node0] && col_node_flag[node1])
+        if (row_node_flag[node0] == 0) continue;
+        int node0_n_adm_pair     = node_adm_pairs_sidx[node0 + 1] - node_adm_pairs_sidx[node0];
+        int *node0_adm_pairs     = node_adm_pairs     + node_adm_pairs_sidx[node0];
+        int *node0_adm_pairs_idx = node_adm_pairs_idx + node_adm_pairs_sidx[node0];
+        int level0 = node_level[node0];
+        int cnt = 0;
+        for (int j = 0; j < node0_n_adm_pair; j++)
         {
-            int level0 = node_level[node0];
+            int node1 = node0_adm_pairs[j];
             int level1 = node_level[node1];
+            if (col_node_flag[node1] == 0) continue;
             if (level1 < fwd_minlvl) fwd_minlvl = level1;
-            if (level0 < bwd_minlvl) bwd_minlvl = level0;
+            cnt++;
         }
+        if ((cnt > 0) && (level0 < bwd_minlvl)) bwd_minlvl = level0;
     }
     et = get_wtime_sec();
     timers[BUILD_K_MM_FWD_TIMER_IDX] += et - st;
@@ -921,43 +970,55 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
 
     // 3. Intermediate multiplication
     st = get_wtime_sec();
-    for (int i = 0; i < n_r_adm_pair; i++)
+    for (int node0 = 0; node0 < n_node; node0++)
     {
-        int node0 = r_adm_pairs[2 * i];
-        int node1 = r_adm_pairs[2 * i + 1];
-        if ((row_node_flag[node0] == 0) || (col_node_flag[node1] == 0)) continue;
-
-        int level0 = node_level[node0];
-        int level1 = node_level[node1];
-
-        H2P_dense_mat_p Bi = c_B_blks[i];
-
-        // (1) Two nodes are of the same level, compress on both sides
-        if (level0 == level1)
+        if (row_node_flag[node0] == 0) continue;
+        int node0_n_adm_pair     = node_adm_pairs_sidx[node0 + 1] - node_adm_pairs_sidx[node0];
+        int *node0_adm_pairs     = node_adm_pairs     + node_adm_pairs_sidx[node0];
+        int *node0_adm_pairs_idx = node_adm_pairs_idx + node_adm_pairs_sidx[node0];
+        for (int j = 0; j < node0_n_adm_pair; j++)
         {
-            double *y0_node1 = y0 + y0_sidx[node1];
-            double *y1_node0 = y1 + y1_sidx[node0];
-            H2ERI_BD_blk_matmul(Bi, tmp_v, y0_node1, y1_node0, nvec);
-        }
+            int node1 = node0_adm_pairs[j];
+            if (col_node_flag[node1] == 0) continue;
+            int level0 = node_level[node0];
+            int level1 = node_level[node1];
 
-        // (2) node1 is a leaf node and its level is higher than node0's level, 
-        //     only compress on node0's side
-        if (level0 > level1)
-        {
-            double *node1_vec_in = node_vec_in + node_vec_in_sidx[node1];
-            double *y1_node0     = y1 + y1_sidx[node0];
-            H2ERI_BD_blk_matmul(Bi, tmp_v, node1_vec_in, y1_node0, nvec);
-        }
+            int pair_idx_j = node0_adm_pairs_idx[j];
+            int trans_blk  = 0;
+            if (pair_idx_j < 0)
+            {
+                trans_blk = 1;
+                pair_idx_j += n_r_adm_pair;
+            }
+            H2P_dense_mat_p Bi = c_B_blks[pair_idx_j];
 
-        // (3) node0 is a leaf node and its level is higher than node1's level, 
-        //     only compress on node1's side
-        if (level0 < level1)
-        {
-            double *y0_node1      = y0 + y0_sidx[node1];
-            double *node0_vec_out = node_vec_out + node_vec_out_sidx[node0];
-            H2ERI_BD_blk_matmul(Bi, tmp_v, y0_node1, node0_vec_out, nvec);
-        }
-    }  // End of i loop
+            // (1) Two nodes are of the same level, compress on both sides
+            if (level0 == level1)
+            {
+                double *y0_node1 = y0 + y0_sidx[node1];
+                double *y1_node0 = y1 + y1_sidx[node0];
+                H2ERI_BD_blk_matmul(trans_blk, Bi, tmp_v, y0_node1, y1_node0, nvec);
+            }
+
+            // (2) node1 is a leaf node and its level is higher than node0's level, 
+            //     only compress on node0's side
+            if (level0 > level1)
+            {
+                double *node1_vec_in = node_vec_in + node_vec_in_sidx[node1];
+                double *y1_node0     = y1 + y1_sidx[node0];
+                H2ERI_BD_blk_matmul(trans_blk, Bi, tmp_v, node1_vec_in, y1_node0, nvec);
+            }
+
+            // (3) node0 is a leaf node and its level is higher than node1's level, 
+            //     only compress on node1's side
+            if (level0 < level1)
+            {
+                double *y0_node1      = y0 + y0_sidx[node1];
+                double *node0_vec_out = node_vec_out + node_vec_out_sidx[node0];
+                H2ERI_BD_blk_matmul(trans_blk, Bi, tmp_v, y0_node1, node0_vec_out, nvec);
+            }
+        }  // End of j loop
+    }  // End of node0 loop
     et = get_wtime_sec();
     timers[BUILD_K_MM_MID_TIMER_IDX] += et - st;
 
@@ -1018,19 +1079,34 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
         double *node1_vec_in  = node_vec_in  + node_vec_in_sidx[node1];
         double *node0_vec_out = node_vec_out + node_vec_out_sidx[node0];
         H2P_dense_mat_p Di = c_D_blks[i];
-        H2ERI_BD_blk_matmul(Di, tmp_v, node1_vec_in, node0_vec_out, nvec);
+        H2ERI_BD_blk_matmul(0, Di, tmp_v, node1_vec_in, node0_vec_out, nvec);
     }
     // (2) Off-diagonal blocks
-    for (int i = 0; i < n_r_inadm_pair; i++)
+    for (int node0 = 0; node0 < n_node; node0++)
     {
-        int node0 = r_inadm_pairs[2 * i];
-        int node1 = r_inadm_pairs[2 * i + 1];
-        if ((row_node_flag[node0] == 0) || (col_node_flag[node1] == 0)) continue;
-        double *node1_vec_in  = node_vec_in  + node_vec_in_sidx[node1];
-        double *node0_vec_out = node_vec_out + node_vec_out_sidx[node0];
-        H2P_dense_mat_p Di = c_D_blks[i + n_leaf_node];
-        H2ERI_BD_blk_matmul(Di, tmp_v, node1_vec_in, node0_vec_out, nvec);
-    }
+        if (row_node_flag[node0] == 0) continue;
+        int node0_n_inadm_pair     = node_inadm_pairs_sidx[node0 + 1] - node_inadm_pairs_sidx[node0];
+        int *node0_inadm_pairs     = node_inadm_pairs     + node_inadm_pairs_sidx[node0];
+        int *node0_inadm_pairs_idx = node_inadm_pairs_idx + node_inadm_pairs_sidx[node0];
+        for (int j = 0; j < node0_n_inadm_pair; j++)
+        {
+            int node1 = node0_inadm_pairs[j];
+            if (col_node_flag[node1] == 0) continue;
+
+            int pair_idx_j = node0_inadm_pairs_idx[j];
+            int trans_blk  = 0;
+            if (pair_idx_j < 0)
+            {
+                trans_blk = 1;
+                pair_idx_j += n_r_inadm_pair;
+            }
+            H2P_dense_mat_p Di = c_D_blks[n_leaf_node + pair_idx_j];
+
+            double *node1_vec_in  = node_vec_in  + node_vec_in_sidx[node1];
+            double *node0_vec_out = node_vec_out + node_vec_out_sidx[node0];
+            H2ERI_BD_blk_matmul(trans_blk, Di, tmp_v, node1_vec_in, node0_vec_out, nvec);
+        }  // End of j loop
+    }  // End of node0 loop
     et = get_wtime_sec();
     timers[BUILD_K_MM_DEN_TIMER_IDX] += et - st;
 }
