@@ -292,19 +292,19 @@ static void H2ERI_exchange_workbuf_update_MN_list(
     int N_nbf = shell_bf_sidx[N + 1] - shell_bf_sidx[N];
     for (int i = 0; i < num_M; i++)
     {
-        if (M_list[i] < N) continue;
+        if (M_list[i] <= N) continue;
         workbuf->M_cut = i;
         break;
     }
 
     // Offset for the output vector indexed by M_list * N
     int *MN_bfp_sidx = workbuf->MN_bfp_sidx;
-    MN_bfp_sidx[0] = 0;
-    for (int i = 1; i <= nshell; i++)
+    memset(MN_bfp_sidx, 0, sizeof(int) * (nshell + 1));
+    for (int i = 0; i < num_M; i++)
     {
         int M = M_list[i];
         int M_nbf = shell_bf_sidx[M + 1] - shell_bf_sidx[M];
-        MN_bfp_sidx[i] = MN_bfp_sidx[i - 1] + M_nbf * N_nbf;
+        MN_bfp_sidx[i + 1] = MN_bfp_sidx[i] + M_nbf * N_nbf;
     }
 
     // Row indices of M_list * N out of shell pair
@@ -406,7 +406,7 @@ static void H2ERI_exchange_workbuf_update_PQ_list(
     int Q_nbf = shell_bf_sidx[Q + 1] - shell_bf_sidx[Q];
     for (int i = 0; i < num_P; i++)
     {
-        if (P_list[i] < Q) continue;
+        if (P_list[i] <= Q) continue;
         workbuf->P_cut = i;
         break;
     }
@@ -472,9 +472,9 @@ static void H2ERI_exchange_workbuf_alloc_dbl_buffer(
     {
         int M = M_list[i];
         int M_nbf = shell_bf_sidx[M + 1] - shell_bf_sidx[M];
-        vec_in_nrow += M_nbf * N_nbf;
+        vec_out_nrow += M_nbf * N_nbf;
     }
-    int vec_out_size = vec_in_nrow * nvec;
+    int vec_out_size = vec_out_nrow * nvec;
 
     // Calculate node_vec_in_size
     int node_vec_in_size  = 0;
@@ -588,7 +588,7 @@ static void H2ERI_build_exchange_gather_vec_in(
         int P_bf_sidx = shell_bf_sidx[P];
         int P_bf_eidx = shell_bf_sidx[P + 1];
         int P_nbf = P_bf_eidx - P_bf_sidx;
-        const double *den_mat_row = den_mat + P_bf_sidx * num_bf;
+        const double *den_mat_ptr = den_mat + P_bf_sidx * num_bf + N_bf_sidx;
         for (int j = 0; j < Q_nbf; j++)
         {
             int row_idx_s, row_idx_e, row_idx_inc, col_idx_s;
@@ -603,11 +603,14 @@ static void H2ERI_build_exchange_gather_vec_in(
                 row_idx_inc = Q_nbf;
             }
             col_idx_s = j * N_nbf + 0;
+            int k = 0;
             for (int row_idx0 = row_idx_s; row_idx0 < row_idx_e; row_idx0 += row_idx_inc)
             {
                 int row_idx1 = col_idx_ipmt[row_idx0];
-                double *vec_in_row = vec_in + row_idx1 * nvec;
-                memcpy(vec_in_row + col_idx_s, den_mat_row + N_bf_sidx, sizeof(double) * N_nbf);
+                double *dst = vec_in + row_idx1 * nvec + col_idx_s;
+                const double *src = den_mat_ptr + k * num_bf;
+                memcpy(dst, src, sizeof(double) * N_nbf);
+                k++;
             }
         }  // End of j loop
         curr_row += P_nbf * Q_nbf;
@@ -697,7 +700,7 @@ static void H2ERI_build_exchange_scatter_vec_out(
             row_idx0_s = MN_bfp_sidx[i];
             row_idx0_e = MN_bfp_sidx[i] + M_nbf;
             s0 = 1;
-            s1 = 1;
+            s1 = 0;
             s2 = M_nbf;
         } else {
             row_idx0_s = MN_bfp_sidx[i];
@@ -715,7 +718,7 @@ static void H2ERI_build_exchange_scatter_vec_out(
                 int vec_out_col = j * N_nbf + k;
                 for (int l = 0; l < M_nbf; l++)
                 {
-                    int vec_out_row_offset = row_idx0_s_k + l * s0;
+                    int vec_out_row_offset = (row_idx0_s_k + l * s0) * nvec;
                     tmp_K[l] += vec_out[vec_out_row_offset + vec_out_col];
                 }
             }  // End of k loop
@@ -810,12 +813,12 @@ static void H2ERI_BD_blk_matmul(
         {
             CBLAS_GEMM(
                 CblasRowMajor, CblasNoTrans, CblasNoTrans, blk->nrow, nvec, blk->ncol,
-                1.0, blk->data, blk->ncol, mat_in, nvec, 1.0, mat_out, nvec
+                1.0, blk->data, blk->ld, mat_in, nvec, 1.0, mat_out, nvec
             );
         } else {
             CBLAS_GEMM(
                 CblasRowMajor, CblasTrans, CblasNoTrans, blk->ncol, nvec, blk->nrow,
-                1.0, blk->data, blk->ncol, mat_in, nvec, 1.0, mat_out, nvec
+                1.0, blk->data, blk->ld, mat_in, nvec, 1.0, mat_out, nvec
             );
         }
     } else {
@@ -1185,8 +1188,6 @@ void H2ERI_build_exchange(H2ERI_p h2eri, const double *den_mat, double *K_mat)
                 et = get_wtime_sec();
                 timers[BUILD_K_AUX_TIMER_IDX] += et - st;
             }  // End of Q loop
-
-            DEBUG_PRINTF("N shell %d done\n", N);
         }  // End of N loop
     }  // End of "#pragma omp parallel"
 
