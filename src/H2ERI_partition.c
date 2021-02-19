@@ -268,6 +268,86 @@ void H2ERI_calc_mat_cluster(H2ERI_p h2eri)
     }
 }
 
+void H2ERI_calc_tree_interaction(
+    const int pt_dim, const int max_child, const int *children, const int *n_child,
+    const double alpha, const double *enbox, const int row_node, const int col_node,
+    H2P_int_vec_p adm_pairs, H2P_int_vec_p inadm_pairs
+)
+{
+    int n_child_r = n_child[row_node];
+    int n_child_c = n_child[col_node];
+
+    // 1. Admissible pair
+    const double *enbox_r = enbox + row_node * pt_dim * 2;
+    const double *enbox_c = enbox + col_node * pt_dim * 2;
+    if (H2P_check_box_admissible(enbox_r, enbox_c, pt_dim, alpha))
+    {
+        H2P_int_vec_push_back(adm_pairs, row_node);
+        H2P_int_vec_push_back(adm_pairs, col_node);
+        return;
+    }
+    
+    // 2. Two inadmissible leaf node
+    if ((n_child_r == 0) && (n_child_c == 0))
+    {
+        H2P_int_vec_push_back(inadm_pairs, row_node);
+        H2P_int_vec_push_back(inadm_pairs, col_node);
+        return;
+    }
+    
+    // 3. row_node is leaf node, col_node is non-leaf node
+    if ((n_child_r == 0) && (n_child_c > 0))
+    {
+        const int *col_children = children + col_node * max_child;
+        for (int j = 0; j < n_child_c; j++)
+        {
+            int col_child_j = col_children[j];
+            H2ERI_calc_tree_interaction(
+                pt_dim, max_child, children, n_child,
+                alpha, enbox, row_node, col_child_j,
+                adm_pairs, inadm_pairs
+            );
+        }
+        return;
+    }
+    
+    // 4. row_node is non-leaf node, col_node is leaf node
+    if ((n_child_r > 0) && (n_child_c == 0))
+    {
+        const int *row_children = children + row_node * max_child;
+        for (int i = 0; i < n_child_r; i++)
+        {
+            int row_child_i = row_children[i];
+            H2ERI_calc_tree_interaction(
+                pt_dim, max_child, children, n_child,
+                alpha, enbox, row_child_i, col_node,
+                adm_pairs, inadm_pairs
+            );
+        }
+        return;
+    }
+    
+    // 5. Neither row_node nor col_node is leaf node
+    if ((n_child_r > 0) && (n_child_c > 0))
+    {
+        const int *row_children = children + row_node * max_child;
+        const int *col_children = children + col_node * max_child;
+        for (int i = 0; i < n_child_r; i++)
+        {
+            int row_child_i = row_children[i];
+            for (int j = 0; j < n_child_c; j++)
+            {
+                int col_child_j = col_children[j];
+                H2ERI_calc_tree_interaction(
+                    pt_dim, max_child, children, n_child,
+                    alpha, enbox, row_child_i, col_child_j,
+                    adm_pairs, inadm_pairs
+                );
+            }
+        }
+    }
+}
+
 // Find each node's admissible and inadmissible pair nodes
 // Input parameter:
 //   h2eri->h2pack : H2 tree partitioning info
@@ -279,16 +359,26 @@ void H2ERI_calc_mat_cluster(H2ERI_p h2eri)
 void H2ERI_calc_node_adm_inadm_pairs(H2ERI_p h2eri)
 {
     H2Pack_p h2pack = h2eri->h2pack;
-    int n_node         = h2pack->n_node;
-    int n_node1        = h2pack->n_node + 1;
-    int n_leaf_node    = h2pack->n_leaf_node;
-    int n_r_adm_pair   = h2pack->n_r_adm_pair;
-    int n_r_inadm_pair = h2pack->n_r_inadm_pair;
-    int n_adm_pair     = 2 * n_r_adm_pair;
-    int n_inadm_pair   = 2 * n_r_inadm_pair;
-    int *r_adm_pairs   = h2pack->r_adm_pairs;
-    int *r_inadm_pairs = h2pack->r_inadm_pairs;
-    int *leaf_nodes    = h2pack->height_nodes;
+
+    int    pt_dim    = h2pack->pt_dim;
+    int    max_child = h2pack->max_child;
+    int    root_idx  = h2pack->root_idx;
+    int    *children = h2pack->children;
+    int    *n_child  = h2pack->n_child;
+    double *enbox    = h2pack->enbox;
+    H2P_int_vec_p adm_pairs, inadm_pairs;
+    H2P_int_vec_init(&adm_pairs, 8192);
+    H2P_int_vec_init(&inadm_pairs, 8192);
+    H2ERI_calc_tree_interaction(
+        pt_dim, max_child, children, n_child,
+        ALPHA_H2, enbox, root_idx, root_idx,
+        adm_pairs, inadm_pairs
+    );
+
+    int n_node       = h2pack->n_node;
+    int n_node1      = n_node + 1;
+    int n_adm_pair   = adm_pairs->length   / 2;
+    int n_inadm_pair = inadm_pairs->length / 2;
     int *node_adm_pairs_sidx   = (int *) malloc(sizeof(int) * n_node1);
     int *node_inadm_pairs_sidx = (int *) malloc(sizeof(int) * n_node1);
     int *node_adm_pairs        = (int *) malloc(sizeof(int) * n_adm_pair);
@@ -301,56 +391,44 @@ void H2ERI_calc_node_adm_inadm_pairs(H2ERI_p h2eri)
     ASSERT_PRINTF(node_adm_pairs_idx    != NULL, "Failed to allocate node_adm_pairs_idx    of size %d\n", n_adm_pair);
     ASSERT_PRINTF(node_inadm_pairs      != NULL, "Failed to allocate node_inadm_pairs      of size %d\n", n_inadm_pair);
     ASSERT_PRINTF(node_inadm_pairs_idx  != NULL, "Failed to allocate node_inadm_pairs_idx  of size %d\n", n_inadm_pair);
-    
+
     memset(node_adm_pairs_sidx, 0, sizeof(int) * n_node1);
-    for (int i = 0; i < n_r_adm_pair; i++)
+    for (int i = 0; i < n_adm_pair; i++)
     {
-        int node0 = r_adm_pairs[2 * i];
-        int node1 = r_adm_pairs[2 * i + 1];
+        int node0 = adm_pairs->data[2 * i];
+        int node1 = adm_pairs->data[2 * i + 1];
         node_adm_pairs_sidx[node0 + 1]++;
-        node_adm_pairs_sidx[node1 + 1]++;
     }
     for (int i = 2; i <= n_node; i++)
         node_adm_pairs_sidx[i] += node_adm_pairs_sidx[i - 1];
-    for (int i = 0; i < n_r_adm_pair; i++)
+    for (int i = 0; i < n_adm_pair; i++)
     {
-        int node0 = r_adm_pairs[2 * i];
-        int node1 = r_adm_pairs[2 * i + 1];
+        int node0 = adm_pairs->data[2 * i];
+        int node1 = adm_pairs->data[2 * i + 1];
         int idx0  = node_adm_pairs_sidx[node0];
-        int idx1  = node_adm_pairs_sidx[node1];
         node_adm_pairs[idx0] = node1;
-        node_adm_pairs[idx1] = node0;
-        node_adm_pairs_idx[idx0] = i;
-        node_adm_pairs_idx[idx1] = i - n_r_adm_pair;
         node_adm_pairs_sidx[node0]++;
-        node_adm_pairs_sidx[node1]++;
     }
     for (int i = n_node; i >= 1; i--)
         node_adm_pairs_sidx[i] = node_adm_pairs_sidx[i - 1];
     node_adm_pairs_sidx[0] = 0;
 
     memset(node_inadm_pairs_sidx, 0, sizeof(int) * n_node1);
-    for (int i = 0; i < n_r_inadm_pair; i++)
+    for (int i = 0; i < n_inadm_pair; i++)
     {
-        int node0 = r_inadm_pairs[2 * i];
-        int node1 = r_inadm_pairs[2 * i + 1];
+        int node0 = inadm_pairs->data[2 * i];
+        int node1 = inadm_pairs->data[2 * i + 1];
         node_inadm_pairs_sidx[node0 + 1]++;
-        node_inadm_pairs_sidx[node1 + 1]++;
     }
     for (int i = 2; i <= n_node; i++)
         node_inadm_pairs_sidx[i] += node_inadm_pairs_sidx[i - 1];
-    for (int i = 0; i < n_r_inadm_pair; i++)
+    for (int i = 0; i < n_inadm_pair; i++)
     {
-        int node0 = r_inadm_pairs[2 * i];
-        int node1 = r_inadm_pairs[2 * i + 1];
+        int node0 = inadm_pairs->data[2 * i];
+        int node1 = inadm_pairs->data[2 * i + 1];
         int idx0  = node_inadm_pairs_sidx[node0];
-        int idx1  = node_inadm_pairs_sidx[node1];
         node_inadm_pairs[idx0] = node1;
-        node_inadm_pairs[idx1] = node0;
-        node_inadm_pairs_idx[idx0] = i;
-        node_inadm_pairs_idx[idx1] = i - n_r_inadm_pair;
         node_inadm_pairs_sidx[node0]++;
-        node_inadm_pairs_sidx[node1]++;
     }
     for (int i = n_node; i >= 1; i--)
         node_inadm_pairs_sidx[i] = node_inadm_pairs_sidx[i - 1];
@@ -362,6 +440,9 @@ void H2ERI_calc_node_adm_inadm_pairs(H2ERI_p h2eri)
     h2eri->node_inadm_pairs      = node_inadm_pairs;
     h2eri->node_adm_pairs_idx    = node_adm_pairs_idx;
     h2eri->node_inadm_pairs_idx  = node_inadm_pairs_idx;
+
+    H2P_int_vec_destroy(&adm_pairs);
+    H2P_int_vec_destroy(&inadm_pairs);
 }
 
 // Calculate plist, plist_idx, plist_sidx for exchange matrix construction 
