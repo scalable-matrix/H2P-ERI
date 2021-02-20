@@ -971,8 +971,7 @@ void H2ERI_compress_BD_blk(
     int blk_rank = J->length;
     int old_size = blk_nrow * blk_ncol;
     int new_size = (blk_nrow + blk_ncol) * blk_rank;
-    //if (new_size > (old_size * 4 / 5))
-    if (new_size > 0)   // TODO: restore to normal
+    if (new_size > (old_size * 4 / 5))
     {
         // The compressed form is not small enough, use the original block
         H2P_dense_mat_init(res_blk_, blk_nrow, blk_ncol);

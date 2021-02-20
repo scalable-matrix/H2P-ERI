@@ -351,7 +351,7 @@ static void H2ERI_exchange_workbuf_update_MN_list(
                 out_vec_idx_size++;
         }
     }
-    //if (out_vec_idx_size > workbuf->out_vec_idx_size)  // TODO: restore to normal
+    if (out_vec_idx_size > workbuf->out_vec_idx_size)
     {
         free(workbuf->out_vec_idx);
         workbuf->out_vec_idx_size = out_vec_idx_size;
@@ -539,7 +539,7 @@ static void H2ERI_exchange_workbuf_alloc_dbl_buffer(
     dbl_buffer_size += node_vec_in_size + node_vec_out_size;
     dbl_buffer_size += y0_size + y1_size;
     dbl_buffer_size += tmp_K_size;
-    //if (dbl_buffer_size > workbuf->dbl_buffer_size)  // TODO: restore to normal
+    if (dbl_buffer_size > workbuf->dbl_buffer_size)
     {
         free(workbuf->dbl_buffer);
         workbuf->dbl_buffer_size = dbl_buffer_size;
@@ -847,7 +847,7 @@ static void H2ERI_BD_blk_matmul(
             );
             CBLAS_GEMM(
                 CblasRowMajor, CblasTrans, CblasNoTrans, blk->ncol, nvec, blk_rank,
-                1.0, V_mat, blk->ncol, tmp_v->data, nvec, 0.0, mat_out, nvec
+                1.0, V_mat, blk->ncol, tmp_v->data, nvec, 1.0, mat_out, nvec
             );
         }
     }
@@ -1090,6 +1090,7 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
         int node0_n_inadm_pair     = node_inadm_pairs_sidx[node0 + 1] - node_inadm_pairs_sidx[node0];
         int *node0_inadm_pairs     = node_inadm_pairs     + node_inadm_pairs_sidx[node0];
         //int *node0_inadm_pairs_idx = node_inadm_pairs_idx + node_inadm_pairs_sidx[node0];
+        double *node0_vec_out = node_vec_out + node_vec_out_sidx[node0];
         for (int j = 0; j < node0_n_inadm_pair; j++)
         {
             int node1 = node0_inadm_pairs[j];
@@ -1108,8 +1109,7 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
                 Di = c_D_blks[-pair_idx_ij - 1];
             }
 
-            double *node1_vec_in  = node_vec_in  + node_vec_in_sidx[node1];
-            double *node0_vec_out = node_vec_out + node_vec_out_sidx[node0];
+            double *node1_vec_in = node_vec_in + node_vec_in_sidx[node1];
             H2ERI_BD_blk_matmul(trans_blk, Di, tmp_v, node1_vec_in, node0_vec_out, nvec);
         }  // End of j loop
     }  // End of node0 loop
@@ -1126,29 +1126,29 @@ void H2ERI_build_exchange(H2ERI_p h2eri, const double *den_mat, double *K_mat)
 
     int num_bf      = h2eri->num_bf;
     int nshell      = h2eri->nshell;
-    int n_thread    = 1;//h2eri->h2pack->n_thread;
+    int n_thread    = h2eri->h2pack->n_thread;
     int *plist      = h2eri->plist;
     int *plist_idx  = h2eri->plist_idx;
     int *plist_sidx = h2eri->plist_sidx;
     int *dlist      = h2eri->dlist;
     int *dlist_sidx = h2eri->dlist_sidx;
 
-    //BLAS_SET_NUM_THREADS(1);
+    BLAS_SET_NUM_THREADS(1);
 
     #pragma omp parallel for 
     for (int i = 0; i < num_bf * num_bf; i++) K_mat[i] = 0;
 
     Kmat_workbuf_p *thread_Kmat_workbuf = (Kmat_workbuf_p *) h2eri->thread_Kmat_workbuf;
-    //#pragma omp parallel num_threads(n_thread)
+    #pragma omp parallel num_threads(n_thread)
     {
-        int tid = 1;//omp_get_thread_num();
+        int tid = omp_get_thread_num();
         Kmat_workbuf_p workbuf = thread_Kmat_workbuf[tid];
 
         double st, et;
         double *timers = workbuf->timers;
         memset(timers, 0, sizeof(double) * 5);
 
-        //#pragma omp for schedule(dynamic)
+        #pragma omp for schedule(dynamic)
         for (int N = 0; N < nshell; N++)
         {
             int num_M        = plist_sidx[N + 1] - plist_sidx[N];
@@ -1191,7 +1191,6 @@ void H2ERI_build_exchange(H2ERI_p h2eri, const double *den_mat, double *K_mat)
                 et = get_wtime_sec();
                 timers[BUILD_K_AUX_TIMER_IDX] += et - st;
             }  // End of Q loop
-            DEBUG_PRINTF("N shell %d done, K fro-norm = %.6e\n", N, calc_2norm(num_bf * num_bf, K_mat));
         }  // End of N loop
     }  // End of "#pragma omp parallel"
 
