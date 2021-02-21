@@ -29,10 +29,8 @@ struct H2ERI
     int    *sp_shell_idx;               // Array, size 2 * num_sp, each row is the contracted shell indices of a SSP
     int    *index_seq;                  // Array, size num_sp, [0, num_sp-1]
     int    *node_adm_pairs;             // Array, size 2 * h2pack->n_r_adm_pair, each node's admissible node pairs
-    int    *node_adm_pairs_idx;         // Array, size 2 * h2pack->n_r_adm_pair, indices of each node's admissible node pairs in h2pack->r_adm_pairs
     int    *node_adm_pairs_sidx;        // Array, size h2pack->n_node+1, index of each node's first admissible node pair
     int    *node_inadm_pairs;           // Array, size 2 * h2pack->n_r_inadm_pair, each node's inadmissible node pairs
-    int    *node_inadm_pairs_idx;       // Array, size 2 * h2pack->n_r_inadm_pair, indices of each node's inadmissible node pairs in h2pack->r_inadm_pairs
     int    *node_inadm_pairs_sidx;      // Array, size h2pack->n_node+1, index of each node's first inadmissible node pair
     int    *plist;                      // Array, size <= 2*num_sp, each shell's screened pair shells
     int    *plist_idx;                  // Array, size <= 2*num_sp, corresponding indices of each shell's screened pair shells in sp_bfp_sidx

@@ -28,10 +28,8 @@ void H2ERI_init(H2ERI_p *h2eri_, const double scr_tol, const double ext_tol, con
     h2eri->sp_shell_idx          = NULL;
     h2eri->index_seq             = NULL;
     h2eri->node_adm_pairs        = NULL;
-    h2eri->node_adm_pairs_idx    = NULL;
     h2eri->node_adm_pairs_sidx   = NULL;
     h2eri->node_inadm_pairs      = NULL;
-    h2eri->node_inadm_pairs_idx  = NULL;
     h2eri->node_inadm_pairs_sidx = NULL;
     h2eri->plist                 = NULL;
     h2eri->plist_idx             = NULL;
@@ -70,10 +68,8 @@ void H2ERI_destroy(H2ERI_p h2eri)
     free(h2eri->sp_shell_idx);
     free(h2eri->index_seq);
     free(h2eri->node_adm_pairs);
-    free(h2eri->node_adm_pairs_idx);
     free(h2eri->node_adm_pairs_sidx);
     free(h2eri->node_inadm_pairs);
-    free(h2eri->node_inadm_pairs_idx);
     free(h2eri->node_inadm_pairs_sidx);
     free(h2eri->plist);
     free(h2eri->plist_idx);

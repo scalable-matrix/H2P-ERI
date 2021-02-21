@@ -876,10 +876,8 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
     H2P_dense_mat_p  tmp_v     = h2pack->tb[tid]->mat0;
 
     int *node_adm_pairs        = h2eri->node_adm_pairs;
-    int *node_adm_pairs_idx    = h2eri->node_adm_pairs_idx;
     int *node_adm_pairs_sidx   = h2eri->node_adm_pairs_sidx;
     int *node_inadm_pairs      = h2eri->node_inadm_pairs;
-    int *node_inadm_pairs_idx  = h2eri->node_inadm_pairs_idx;
     int *node_inadm_pairs_sidx = h2eri->node_inadm_pairs_sidx;
 
     int    nvec                = workbuf->nvec;
@@ -914,9 +912,8 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
     for (int node0 = 0; node0 < n_node; node0++)
     {
         if (row_node_flag[node0] == 0) continue;
-        int node0_n_adm_pair     = node_adm_pairs_sidx[node0 + 1] - node_adm_pairs_sidx[node0];
-        int *node0_adm_pairs     = node_adm_pairs     + node_adm_pairs_sidx[node0];
-        int *node0_adm_pairs_idx = node_adm_pairs_idx + node_adm_pairs_sidx[node0];
+        int node0_n_adm_pair = node_adm_pairs_sidx[node0 + 1] - node_adm_pairs_sidx[node0];
+        int *node0_adm_pairs = node_adm_pairs + node_adm_pairs_sidx[node0];
         int level0 = node_level[node0];
         int cnt = 0;
         for (int j = 0; j < node0_n_adm_pair; j++)
@@ -983,9 +980,8 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
     for (int node0 = 0; node0 < n_node; node0++)
     {
         if (row_node_flag[node0] == 0) continue;
-        int node0_n_adm_pair     = node_adm_pairs_sidx[node0 + 1] - node_adm_pairs_sidx[node0];
-        int *node0_adm_pairs     = node_adm_pairs     + node_adm_pairs_sidx[node0];
-        //int *node0_adm_pairs_idx = node_adm_pairs_idx + node_adm_pairs_sidx[node0];
+        int node0_n_adm_pair = node_adm_pairs_sidx[node0 + 1] - node_adm_pairs_sidx[node0];
+        int *node0_adm_pairs = node_adm_pairs + node_adm_pairs_sidx[node0];
         for (int j = 0; j < node0_n_adm_pair; j++)
         {
             int node1 = node0_adm_pairs[j];
@@ -1087,9 +1083,8 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
     for (int node0 = 0; node0 < n_node; node0++)
     {
         if (row_node_flag[node0] == 0) continue;
-        int node0_n_inadm_pair     = node_inadm_pairs_sidx[node0 + 1] - node_inadm_pairs_sidx[node0];
-        int *node0_inadm_pairs     = node_inadm_pairs     + node_inadm_pairs_sidx[node0];
-        //int *node0_inadm_pairs_idx = node_inadm_pairs_idx + node_inadm_pairs_sidx[node0];
+        int node0_n_inadm_pair = node_inadm_pairs_sidx[node0 + 1] - node_inadm_pairs_sidx[node0];
+        int *node0_inadm_pairs = node_inadm_pairs + node_inadm_pairs_sidx[node0];
         double *node0_vec_out = node_vec_out + node_vec_out_sidx[node0];
         for (int j = 0; j < node0_n_inadm_pair; j++)
         {
