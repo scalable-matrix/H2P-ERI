@@ -39,13 +39,9 @@ struct Kmat_workbuf
     int    col_n_leaf_node;     // Number of leaf nodes in column subtree
     int    P_cut;               // Index of the first element > Q shell index in plist{Q}
     int    P_list_len;          // Length of P_list
-    int    out_vec_idx_size;    // Size of out_vec_idx
-    int    vec_in_size;         // Size of vec_in
-    int    vec_out_size;        // Size of vec_out
-    int    node_vec_in_size;    // Size of node_vec_in
-    int    node_vec_out_size;   // Size of node_vec_out
-    int    y0_size;             // Size of y0
-    int    y1_size;             // Size of y1
+    int    vec_out_idx_size;    // Size of vec_out_idx
+    int    nvi_nnz_ridx_size;   // Size of nvi_nnz_row_idx
+    int    nvo_nnz_ridx_size;   // Size of nvo_nnz_row_idx
     int    int_buffer_size;     // Size of int_buffer
     int    dbl_buffer_size;     // Size of dbl_buffer
     int    nvec;                // Current matmul output matrix number of columns, == N_nbf * Q_nbf
@@ -55,8 +51,7 @@ struct Kmat_workbuf
     int    *row_node_flag;      // Size h2pack->n_node, mark if a node in h2pack is in row subtree
     int    *row_idx_ascend;     // Size h2eri->{nshell * max_shell_nbf^2}, row_idx sorted in ascending
     int    *row_idx_pmt;        // Size h2eri->{nshell * max_shell_nbf^2}, original indices of row_idx_ascend
-    int    *out_vec_idx;        // Size unknown, mapping from each node's node_out_vec to out_vec
-    int    *out_vec_sidx;       // Size h2pack->n_leaf_node+1, indices of each node's out_vec_idx
+    int    *vec_out_sidx;       // Size h2pack->n_node+1, indices of each node's vec_out_idx
     int    *P_list;             // Size h2eri->nshell, list of significant P shells
     int    *P_idx;              // Size h2eri->nshell, indices of P_list[i] in H2ERI_build_exchange->plist
     int    *col_idx;            // Size h2eri->{nshell * max_shell_nbf^2}, H2 matvec column indices
@@ -64,16 +59,21 @@ struct Kmat_workbuf
     int    *col_node_flag;      // Size h2pack->n_node, mark if a node in h2pack is in column subtree
     int    *col_idx_pmt;        // Size h2eri->{nshell * max_shell_nbf^2}, original indices of row_idx
     int    *col_idx_ipmt;       // Size h2eri->{nshell * max_shell_nbf^2}, inverse function of col_idx_pmt
-    int    *node_vec_in_sidx;   // Size h2pack->n_node+1, indices of each node's node_vec_in 
-    int    *node_vec_out_sidx;  // Size h2pack->n_node+1, indices of each node's node_vec_out
+    int    *nvi_nnz_row_sidx;   // Size h2pack->n_node+1, indices of each node's nvi_nnz_row_idx
+    int    *nvo_nnz_row_sidx;   // Size h2pack->n_node+1, indices of each node's nvo_nnz_row_idx
+    int    *nvi_nnz_sidx;       // Size h2pack->n_node+1, indices of each node's node_vec_in 
+    int    *nvo_nnz_sidx;       // Size h2pack->n_node+1, indices of each node's node_vec_out
     int    *y0_sidx;            // Size h2pack->n_node+1, indices of each node's y0
     int    *y1_sidx;            // Size h2pack->n_node+1, indices of each node's y1
-    int    *tmp_arr;            // Size h2pack->n_node, temporary array
-    int    *int_buffer;         // == all int* arrays except out_vec_idx, to reduce memory fragments 
-    double *vec_in;             // Size unknown, partial matmul input vector
-    double *vec_out;            // Size unknown, partial matmul output vector restricted from each node's output
-    double *node_vec_in;        // Size unknown, partial matmul input vector extended to each node
-    double *node_vec_out;       // Size unknown, partial matmul output vector
+    int    *tmp_arr;            // Size h2pack->max_leaf_points, temporary array
+    int    *int_buffer;         // == all int* arrays above vec_out_idx, to reduce memory fragments 
+    int    *vec_out_idx;        // Size unknown, mapping from each node's nvo_nnz to out_vec
+    int    *nvi_nnz_row_idx;    // Size unknown, non-zero row indices of each node's input vectors
+    int    *nvo_nnz_row_idx;    // Size unknown, non-zero row indices of each node's unrestricted output vector
+    double *vec_in;             // Size unknown, partial matmul input vectors
+    double *vec_out;            // Size unknown, partial matmul output vectors restricted from each node's output
+    double *nvi_nnz;            // Size unknown, non-zero rows of partial matmul input vectors extended to each node
+    double *nvo_nnz;            // Size unknown, non-zero rows of partial matmul output vectors
     double *y0;                 // Size unknown, partial matmul intermediate variables
     double *y1;                 // Size unknown, partial matmul intermediate variables
     double *tmp_K;              // Size h2eri->max_shell_nbf, temporary array for K mat accumulation
@@ -95,11 +95,12 @@ typedef enum
 // Initialize each thread's K mat build work buffer
 void H2ERI_exchange_workbuf_init(H2ERI_p h2eri)
 {
-    int nshell        = h2eri->nshell;
-    int max_shell_nbf = h2eri->max_shell_nbf;
-    int n_thread      = h2eri->h2pack->n_thread;
-    int n_node        = h2eri->h2pack->n_node;
-    int n_leaf_node   = h2eri->h2pack->n_leaf_node;
+    int nshell          = h2eri->nshell;
+    int max_shell_nbf   = h2eri->max_shell_nbf;
+    int n_thread        = h2eri->h2pack->n_thread;
+    int n_node          = h2eri->h2pack->n_node;
+    int n_leaf_node     = h2eri->h2pack->n_leaf_node;
+    int max_leaf_points = h2eri->h2pack->max_leaf_points;
     Kmat_workbuf_p *thread_Kmat_workbuf = (Kmat_workbuf_p *) malloc(sizeof(Kmat_workbuf_p) * n_thread);
     #pragma omp parallel num_threads(n_thread)
     {
@@ -117,9 +118,8 @@ void H2ERI_exchange_workbuf_init(H2ERI_p h2eri)
         // row_idx_ascend, row_idx_pmt
         int_buffer_size += nshell * max_shell_nbf * max_shell_nbf;
         int_buffer_size += nshell * max_shell_nbf * max_shell_nbf;
-        // out_vec_sidx
-        int_buffer_size += n_leaf_node + 1;
-        // P_list, P_idx
+        // vec_out_sidx, P_list, P_idx
+        int_buffer_size += n_node + 1;
         int_buffer_size += nshell;
         int_buffer_size += nshell;
         // col_idx, col_leaf_nodes, col_node_flag, col_idx_pmt, col_idx_ipmt
@@ -128,12 +128,15 @@ void H2ERI_exchange_workbuf_init(H2ERI_p h2eri)
         int_buffer_size += n_node;
         int_buffer_size += nshell * max_shell_nbf * max_shell_nbf;
         int_buffer_size += nshell * max_shell_nbf * max_shell_nbf;
-        // node_vec_in_sidx, node_vec_out_sidx, y0_sidx, y1_sidx, tmp_arr
+        // nvi_nnz_row_sidx, nvo_nnz_row_sidx, nvi_nnz_sidx, nvo_nnz_sidx
         int_buffer_size += n_node + 1;
         int_buffer_size += n_node + 1;
         int_buffer_size += n_node + 1;
         int_buffer_size += n_node + 1;
-        int_buffer_size += n_node;
+        // y0_sidx, y1_sidx, tmp_arr
+        int_buffer_size += n_node + 1;
+        int_buffer_size += n_node + 1;
+        int_buffer_size += max_leaf_points;
 
         int *int_buffer = (int *) malloc(sizeof(int) * int_buffer_size);
         ASSERT_PRINTF(int_buffer != NULL, "Failed to allocate int_buffer of size %d\n", int_buffer_size);
@@ -146,29 +149,35 @@ void H2ERI_exchange_workbuf_init(H2ERI_p h2eri)
         workbuf->row_node_flag     = workbuf->row_leaf_nodes    + n_leaf_node;
         workbuf->row_idx_ascend    = workbuf->row_node_flag     + n_node;
         workbuf->row_idx_pmt       = workbuf->row_idx_ascend    + nshell * max_shell_nbf * max_shell_nbf;
-        workbuf->out_vec_sidx      = workbuf->row_idx_pmt       + nshell * max_shell_nbf * max_shell_nbf;
-        workbuf->P_list            = workbuf->out_vec_sidx      + n_leaf_node + 1;
+        workbuf->vec_out_sidx      = workbuf->row_idx_pmt       + nshell * max_shell_nbf * max_shell_nbf;
+        workbuf->P_list            = workbuf->vec_out_sidx      + n_node + 1;
         workbuf->P_idx             = workbuf->P_list            + nshell;
         workbuf->col_idx           = workbuf->P_idx             + nshell;
         workbuf->col_leaf_nodes    = workbuf->col_idx           + nshell * max_shell_nbf * max_shell_nbf;
         workbuf->col_node_flag     = workbuf->col_leaf_nodes    + n_leaf_node;
         workbuf->col_idx_pmt       = workbuf->col_node_flag     + n_node;
         workbuf->col_idx_ipmt      = workbuf->col_idx_pmt       + nshell * max_shell_nbf * max_shell_nbf;
-        workbuf->node_vec_in_sidx  = workbuf->col_idx_ipmt      + nshell * max_shell_nbf * max_shell_nbf;
-        workbuf->node_vec_out_sidx = workbuf->node_vec_in_sidx  + n_node + 1;
-        workbuf->y0_sidx           = workbuf->node_vec_out_sidx + n_node + 1;
-        workbuf->y1_sidx           = workbuf->y0_sidx + n_node  + 1;
-        workbuf->tmp_arr           = workbuf->y1_sidx + n_node  + 1;
+        workbuf->nvi_nnz_row_sidx  = workbuf->col_idx_ipmt      + nshell * max_shell_nbf * max_shell_nbf;
+        workbuf->nvo_nnz_row_sidx  = workbuf->nvi_nnz_row_sidx  + n_node + 1;
+        workbuf->nvi_nnz_sidx      = workbuf->nvo_nnz_row_sidx  + n_node + 1;
+        workbuf->nvo_nnz_sidx      = workbuf->nvi_nnz_sidx      + n_node + 1;
+        workbuf->y0_sidx           = workbuf->nvo_nnz_sidx      + n_node + 1;
+        workbuf->y1_sidx           = workbuf->y0_sidx           + n_node + 1;
+        workbuf->tmp_arr           = workbuf->y1_sidx           + n_node + 1;
 
-        workbuf->out_vec_idx_size  = 0;
-        workbuf->out_vec_idx       = NULL;
+        workbuf->vec_out_idx_size  = 0;
+        workbuf->nvi_nnz_ridx_size = 0;
+        workbuf->nvo_nnz_ridx_size = 0;
+        workbuf->vec_out_idx       = NULL;
+        workbuf->nvi_nnz_row_idx   = NULL;
+        workbuf->nvo_nnz_row_idx   = NULL;
 
         workbuf->dbl_buffer_size   = 0;
         workbuf->dbl_buffer        = NULL;
         workbuf->vec_in            = NULL;
         workbuf->vec_out           = NULL;
-        workbuf->node_vec_in       = NULL;
-        workbuf->node_vec_out      = NULL;
+        workbuf->nvi_nnz           = NULL;
+        workbuf->nvo_nnz           = NULL;
         workbuf->y0                = NULL;
         workbuf->y1                = NULL;
 
@@ -186,7 +195,9 @@ void H2ERI_exchange_workbuf_free(H2ERI_p h2eri)
     {
         Kmat_workbuf_p workbuf = thread_Kmat_workbuf[i];
         free(workbuf->int_buffer);
-        free(workbuf->out_vec_idx);
+        free(workbuf->vec_out_idx);
+        free(workbuf->nvi_nnz_row_idx);
+        free(workbuf->nvo_nnz_row_idx);
         free(workbuf->dbl_buffer);
         free(workbuf);
     }
@@ -322,7 +333,7 @@ static void H2ERI_exchange_workbuf_update_MN_list(
     }
     workbuf->row_idx_len = row_idx_len;
 
-    // Row subtree related arrays
+    // Find the minimal covering subtree for row nodes
     int *row_idx_ascend = workbuf->row_idx_ascend;
     int *row_idx_pmt    = workbuf->row_idx_pmt;
     for (int i = 0; i < row_idx_len; i++)
@@ -336,47 +347,70 @@ static void H2ERI_exchange_workbuf_update_MN_list(
         &workbuf->row_n_leaf_node, workbuf->row_leaf_nodes, 
         workbuf->row_node_flag, &workbuf->row_max_level
     );
-    int out_vec_idx_size = 0;
-    int row_n_leaf_node  = workbuf->row_n_leaf_node;
-    int *row_leaf_nodes  = workbuf->row_leaf_nodes;
-    int *mat_cluster     = h2eri->h2pack->mat_cluster;
+
+    // Calculate the sizes and offsets of vec_out and nvo_nnz_row
+    int n_node            = h2eri->h2pack->n_node;
+    int row_n_leaf_node   = workbuf->row_n_leaf_node;
+    int vec_out_idx_size  = 0;
+    int *mat_cluster      = h2eri->h2pack->mat_cluster;
+    int *row_leaf_nodes   = workbuf->row_leaf_nodes;
+    int *vec_out_sidx     = workbuf->vec_out_sidx;
+    int *nvo_nnz_row_sidx = workbuf->nvo_nnz_row_sidx;
+    vec_out_idx_size      = 0;
+    memset(vec_out_sidx,     0, sizeof(int) * (n_node + 1));
+    memset(nvo_nnz_row_sidx, 0, sizeof(int) * (n_node + 1));
     for (int i = 0; i < row_n_leaf_node; i++)
     {
-        int node = row_leaf_nodes[i];
+        int node          = row_leaf_nodes[i];
+        int nnz_node      = 0;
         int mat_cluster_s = mat_cluster[2 * node];
         int mat_cluster_e = mat_cluster[2 * node + 1];
         for (int j = 0; j < row_idx_len; j++)
-        {
-            if ((mat_cluster_s <= row_idx_ascend[j]) && (row_idx_ascend[j] <= mat_cluster_e))
-                out_vec_idx_size++;
-        }
+            if ((mat_cluster_s <= row_idx_ascend[j]) && (row_idx_ascend[j] <= mat_cluster_e)) nnz_node++;
+        vec_out_sidx[node + 1]     = nnz_node;
+        nvo_nnz_row_sidx[node + 1] = nnz_node;
+        vec_out_idx_size += nnz_node;
     }
-    if (out_vec_idx_size > workbuf->out_vec_idx_size)
+    for (int i = 1; i <= n_node; i++)
     {
-        free(workbuf->out_vec_idx);
-        workbuf->out_vec_idx_size = out_vec_idx_size;
-        workbuf->out_vec_idx = (int *) malloc(sizeof(int) * out_vec_idx_size);
-        ASSERT_PRINTF(workbuf->out_vec_idx != NULL, "Failed to allocate out_vec_idx of size %d\n", out_vec_idx_size);
+        vec_out_sidx[i]     += vec_out_sidx[i - 1];
+        nvo_nnz_row_sidx[i] += nvo_nnz_row_sidx[i - 1];
     }
-    int *out_vec_idx  = workbuf->out_vec_idx;
-    int *out_vec_sidx = workbuf->out_vec_sidx;
-    out_vec_idx_size  = 0;
-    out_vec_sidx[0]   = 0;
+
+    // Calculate vec_out_idx and nvo_nnz_row_idx
+    if (vec_out_idx_size > workbuf->vec_out_idx_size)
+    {
+        free(workbuf->vec_out_idx);
+        free(workbuf->nvo_nnz_row_idx);
+        workbuf->vec_out_idx_size  = vec_out_idx_size;
+        workbuf->nvo_nnz_ridx_size = vec_out_idx_size;
+        workbuf->vec_out_idx     = (int *) malloc(sizeof(int) * vec_out_idx_size);
+        workbuf->nvo_nnz_row_idx = (int *) malloc(sizeof(int) * vec_out_idx_size);
+        ASSERT_PRINTF(workbuf->vec_out_idx     != NULL, "Failed to allocate vec_out_idx     of size %d\n", vec_out_idx_size);
+        ASSERT_PRINTF(workbuf->nvo_nnz_row_idx != NULL, "Failed to allocate nvo_nnz_row_idx of size %d\n", vec_out_idx_size);
+    }
+    int *vec_out_idx      = workbuf->vec_out_idx;
+    int *nvo_nnz_row_idx  = workbuf->nvo_nnz_row_idx;
     for (int i = 0; i < row_n_leaf_node; i++)
     {
-        int node = row_leaf_nodes[i];
+        int node          = row_leaf_nodes[i];
+        int nnz_node      = 0;
         int mat_cluster_s = mat_cluster[2 * node];
         int mat_cluster_e = mat_cluster[2 * node + 1];
+        int *vec_out_idx_node     = vec_out_idx     + vec_out_sidx[node];
+        int *nvo_nnz_row_idx_node = nvo_nnz_row_idx + nvo_nnz_row_sidx[node];
         for (int j = 0; j < row_idx_len; j++)
         {
             if (mat_cluster_s <= row_idx_ascend[j] && row_idx_ascend[j] <= mat_cluster_e)
             {
-                out_vec_idx[out_vec_idx_size] = j;
-                out_vec_idx_size++;
+                int idx1 = row_idx_pmt[j];
+                int idx2 = row_idx_ascend[j] - mat_cluster_s;
+                vec_out_idx_node[nnz_node]     = idx1;
+                nvo_nnz_row_idx_node[nnz_node] = idx2;
+                nnz_node++;
             }
-        }
-        out_vec_sidx[i + 1] = out_vec_idx_size;
-    }
+        }  // End of j loop
+    }  // End of i loop
 }
 
 // Update a Kmat_workbuf structure with a selected |P_list[], Q)
@@ -426,7 +460,7 @@ static void H2ERI_exchange_workbuf_update_PQ_list(
     }
     workbuf->col_idx_len = col_idx_len;
 
-    // Row subtree related arrays
+    // Find the minimal covering subtree for column nodes
     int *col_idx_pmt  = workbuf->col_idx_pmt;
     int *col_idx_ipmt = workbuf->col_idx_ipmt;
     for (int i = 0; i < col_idx_len; i++) col_idx_pmt[i] = i;
@@ -437,6 +471,54 @@ static void H2ERI_exchange_workbuf_update_PQ_list(
         &workbuf->col_n_leaf_node, workbuf->col_leaf_nodes, 
         workbuf->col_node_flag, &workbuf->col_max_level
     );
+
+    // Calculate the sizes and offsets of nvi_nnz_row
+    int n_node            = h2eri->h2pack->n_node;
+    int col_n_leaf_node   = workbuf->col_n_leaf_node;
+    int nvi_nnz_ridx_size = 0;
+    int *mat_cluster      = h2eri->h2pack->mat_cluster;
+    int *col_leaf_nodes   = workbuf->col_leaf_nodes;
+    int *nvi_nnz_row_sidx = workbuf->nvi_nnz_row_sidx;
+    memset(nvi_nnz_row_sidx, 0, sizeof(int) * (n_node + 1));
+    for (int i = 0; i < col_n_leaf_node; i++)
+    {
+        int node          = col_leaf_nodes[i];
+        int nnz_node      = 0;
+        int mat_cluster_s = mat_cluster[2 * node];
+        int mat_cluster_e = mat_cluster[2 * node + 1];
+        for (int j = 0; j < col_idx_len; j++)
+            if ((mat_cluster_s <= col_idx[j]) && (col_idx[j] <= mat_cluster_e)) nnz_node++;
+        nvi_nnz_row_sidx[node + 1] = nnz_node;
+        nvi_nnz_ridx_size += nnz_node;
+    }
+    for (int i = 1; i <= n_node; i++)
+        nvi_nnz_row_sidx[i] += nvi_nnz_row_sidx[i - 1];
+
+    // Calculate nvi_nnz_row_idx
+    if (nvi_nnz_ridx_size > workbuf->nvi_nnz_ridx_size)
+    {
+        free(workbuf->nvi_nnz_row_idx);
+        workbuf->nvi_nnz_ridx_size = nvi_nnz_ridx_size;
+        workbuf->nvi_nnz_row_idx = (int *) malloc(sizeof(int) * nvi_nnz_ridx_size);
+        ASSERT_PRINTF(workbuf->nvi_nnz_row_idx != NULL, "Failed to allocate nvi_nnz_row_idx of size %d\n", nvi_nnz_ridx_size);
+    }
+    int *nvi_nnz_row_idx = workbuf->nvi_nnz_row_idx;
+    for (int i = 0; i < col_n_leaf_node; i++)
+    {
+        int node          = col_leaf_nodes[i];
+        int mat_cluster_s = mat_cluster[2 * node];
+        int mat_cluster_e = mat_cluster[2 * node + 1];
+        int nnz_node      = 0;
+        int *nvi_nnz_row_idx_node = nvi_nnz_row_idx + nvi_nnz_row_sidx[node];
+        for (int j = 0; j < col_idx_len; j++)
+        {
+            if ((mat_cluster_s <= col_idx[j]) && (col_idx[j] <= mat_cluster_e))
+            {
+                nvi_nnz_row_idx_node[nnz_node] = col_idx[j] - mat_cluster_s;
+                nnz_node++;
+            }
+        }
+    }
 }
 
 // Allocate dbl_buffer and assign corresponding pointers
@@ -476,37 +558,19 @@ static void H2ERI_exchange_workbuf_alloc_dbl_buffer(
     }
     int vec_out_size = vec_out_nrow * nvec;
 
-    // Calculate node_vec_in_size
-    int node_vec_in_size  = 0;
-    int col_n_leaf_node   = workbuf->col_n_leaf_node;
-    int *col_leaf_nodes   = workbuf->col_leaf_nodes;
-    int *node_vec_in_sidx = workbuf->node_vec_in_sidx;
-    int *tmp_arr          = workbuf->tmp_arr;
-    node_vec_in_sidx[0] = 0;
-    memset(tmp_arr, 0, sizeof(int) * n_node);
-    for (int i = 0; i < col_n_leaf_node; i++) tmp_arr[col_leaf_nodes[i]] = 1;
-    for (int i = 0; i < n_node; i++)
-    {
-        int mat_cluster_s = mat_cluster[2 * i];
-        int mat_cluster_e = mat_cluster[2 * i + 1];
-        if (tmp_arr[i]) node_vec_in_size += (mat_cluster_e - mat_cluster_s + 1) * nvec;
-        node_vec_in_sidx[i + 1] = node_vec_in_size;
-    }
+    // nv{i, o}_nnz are of the same sizes as vec_{in, out}
+    int nvi_nnz_size = vec_in_size;
+    int nvo_nnz_size = vec_out_size;
 
-    // Calculate node_vec_out_size
-    int node_vec_out_size  = 0;
-    int row_n_leaf_node    = workbuf->row_n_leaf_node;
-    int *row_leaf_nodes    = workbuf->row_leaf_nodes;
-    int *node_vec_out_sidx = workbuf->node_vec_out_sidx;
-    node_vec_out_sidx[0] = 0;
-    memset(tmp_arr, 0, sizeof(int) * n_node);
-    for (int i = 0; i < row_n_leaf_node; i++) tmp_arr[row_leaf_nodes[i]] = 1;
-    for (int i = 0; i < n_node; i++)
+    // Set up nvi_nnz_sidx and nvo_nnz_sidx
+    int *nvi_nnz_sidx     = workbuf->nvi_nnz_sidx;
+    int *nvo_nnz_sidx     = workbuf->nvo_nnz_sidx;
+    int *nvi_nnz_row_sidx = workbuf->nvi_nnz_row_sidx;
+    int *nvo_nnz_row_sidx = workbuf->nvo_nnz_row_sidx;
+    for (int i = 0; i <= h2eri->h2pack->n_node; i++)
     {
-        int mat_cluster_s = mat_cluster[2 * i];
-        int mat_cluster_e = mat_cluster[2 * i + 1];
-        if (tmp_arr[i]) node_vec_out_size += (mat_cluster_e - mat_cluster_s + 1) * nvec;
-        node_vec_out_sidx[i + 1] = node_vec_out_size;
+        nvi_nnz_sidx[i] = nvi_nnz_row_sidx[i] * nvec;
+        nvo_nnz_sidx[i] = nvo_nnz_row_sidx[i] * nvec;
     }
 
     // Calculate y0_size
@@ -536,7 +600,7 @@ static void H2ERI_exchange_workbuf_alloc_dbl_buffer(
     // Allocate double buffer and assign pointers 
     int dbl_buffer_size = 0;
     dbl_buffer_size += vec_in_size + vec_out_size;
-    dbl_buffer_size += node_vec_in_size + node_vec_out_size;
+    dbl_buffer_size += nvi_nnz_size + nvo_nnz_size;
     dbl_buffer_size += y0_size + y1_size;
     dbl_buffer_size += tmp_K_size;
     if (dbl_buffer_size > workbuf->dbl_buffer_size)
@@ -547,19 +611,13 @@ static void H2ERI_exchange_workbuf_alloc_dbl_buffer(
         ASSERT_PRINTF(workbuf->dbl_buffer != NULL, "Failed to allocate dbl_buffer of size %d\n", dbl_buffer_size);
     }
     memset(workbuf->dbl_buffer, 0, sizeof(double) * dbl_buffer_size);
-    workbuf->vec_in_size       = vec_in_size;
-    workbuf->vec_out_size      = vec_out_size;
-    workbuf->node_vec_in_size  = node_vec_in_size;
-    workbuf->node_vec_out_size = node_vec_out_size;
-    workbuf->y0_size           = y0_size;
-    workbuf->y1_size           = y1_size;
-    workbuf->vec_in            = workbuf->dbl_buffer;
-    workbuf->vec_out           = workbuf->vec_in       + vec_in_size;
-    workbuf->node_vec_in       = workbuf->vec_out      + vec_out_size;
-    workbuf->node_vec_out      = workbuf->node_vec_in  + node_vec_in_size;
-    workbuf->y0                = workbuf->node_vec_out + node_vec_out_size;
-    workbuf->y1                = workbuf->y0           + y0_size;
-    workbuf->tmp_K             = workbuf->y1           + y1_size;
+    workbuf->vec_in  = workbuf->dbl_buffer;
+    workbuf->vec_out = workbuf->vec_in  + vec_in_size;
+    workbuf->nvi_nnz = workbuf->vec_out + vec_out_size;
+    workbuf->nvo_nnz = workbuf->nvi_nnz + nvi_nnz_size;
+    workbuf->y0      = workbuf->nvo_nnz + nvo_nnz_size;
+    workbuf->y1      = workbuf->y0      + y0_size;
+    workbuf->tmp_K   = workbuf->y1      + y1_size;
 }
 
 // Gather H2 partial matmul input vectors from density matrix
@@ -616,27 +674,29 @@ static void H2ERI_build_exchange_gather_vec_in(
         curr_row += P_nbf * Q_nbf;
     }  // End of i loop
 
-    // From vec_in to node_vec_in
-    int    col_idx_len       = workbuf->col_idx_len;
-    int    col_n_leaf_node   = workbuf->col_n_leaf_node;
-    int    *node_vec_in_sidx = workbuf->node_vec_in_sidx;
-    int    *col_leaf_nodes   = workbuf->col_leaf_nodes;
-    int    *mat_cluster      = h2eri->h2pack->mat_cluster;
-    int    *col_idx          = workbuf->col_idx;
-    double *node_vec_in      = workbuf->node_vec_in;
+    // Copy data from vec_in to nvi_nnz
+    int    col_idx_len     = workbuf->col_idx_len;
+    int    col_n_leaf_node = workbuf->col_n_leaf_node;
+    int    *mat_cluster    = h2eri->h2pack->mat_cluster;
+    int    *col_leaf_nodes = workbuf->col_leaf_nodes;
+    int    *col_idx        = workbuf->col_idx;
+    int    *nvi_nnz_sidx   = workbuf->nvi_nnz_sidx;
+    double *nvi_nnz        = workbuf->nvi_nnz;
     for (int i = 0; i < col_n_leaf_node; i++)
     {
-        int    node           = col_leaf_nodes[i];
-        int    mat_cluster_s  = mat_cluster[2 * node];
-        int    mat_cluster_e  = mat_cluster[2 * node + 1];
-        double *leaf_i_vec_in = node_vec_in + node_vec_in_sidx[node];
+        int    node          = col_leaf_nodes[i];
+        int    mat_cluster_s = mat_cluster[2 * node];
+        int    mat_cluster_e = mat_cluster[2 * node + 1];
+        int    nnz_node      = 0;
+        double *nvi_nnz_node = nvi_nnz + nvi_nnz_sidx[node];
         for (int j = 0; j < col_idx_len; j++)
         {
             if ((mat_cluster_s <= col_idx[j]) && (col_idx[j] <= mat_cluster_e))
             {
-                double *dst = leaf_i_vec_in + (col_idx[j] - mat_cluster_s) * nvec;
-                double *src = vec_in + j * nvec;
+                double *dst = nvi_nnz_node + nnz_node * nvec;
+                double *src = vec_in       + j * nvec;
                 memcpy(dst, src, sizeof(double) * nvec);
+                nnz_node++;
             }
         }
     }
@@ -653,32 +713,24 @@ static void H2ERI_build_exchange_scatter_vec_out(
     int Q_nbf          = shell_bf_sidx[Q + 1] - shell_bf_sidx[Q];
     int nvec           = N_nbf * Q_nbf;
 
-    // From node_vec_in to vec_in
-    int    row_n_leaf_node    = workbuf->row_n_leaf_node;
-    int    row_idx_len        = workbuf->row_idx_len;
-    int    *row_leaf_nodes    = workbuf->row_leaf_nodes;
-    int    *row_idx_ascend    = workbuf->row_idx_ascend;
-    int    *row_idx_pmt       = workbuf->row_idx_pmt;
-    int    *out_vec_idx       = workbuf->out_vec_idx;
-    int    *out_vec_sidx      = workbuf->out_vec_sidx;
-    int    *mat_cluster       = h2eri->h2pack->mat_cluster;
-    int    *node_vec_out_sidx = workbuf->node_vec_out_sidx;
-    double *vec_out           = workbuf->vec_out;
-    double *node_vec_out      = workbuf->node_vec_out;
+    // Copy data from nvo_nnz to vec_out
+    int    row_n_leaf_node = workbuf->row_n_leaf_node;
+    int    *row_leaf_nodes = workbuf->row_leaf_nodes;
+    int    *vec_out_idx    = workbuf->vec_out_idx;
+    int    *vec_out_sidx   = workbuf->vec_out_sidx;
+    int    *nvo_nnz_sidx   = workbuf->nvo_nnz_sidx;
+    double *vec_out        = workbuf->vec_out;
+    double *nvo_nnz        = workbuf->nvo_nnz;
     for (int i = 0; i < row_n_leaf_node; i++)
     {
-        int    node                = row_leaf_nodes[i];
-        int    mat_cluster_s       = mat_cluster[2 * node];
-        int    leaf_i_out_vec_len  = out_vec_sidx[i + 1] - out_vec_sidx[i];
-        int    *leaf_i_out_vec_idx = out_vec_idx + out_vec_sidx[i];
-        double *leaf_i_vec_out     = node_vec_out + node_vec_out_sidx[node];
-        for (int j = 0; j < leaf_i_out_vec_len; j++)
+        int    node            = row_leaf_nodes[i];
+        int    vec_out_idx_len = vec_out_sidx[node + 1] - vec_out_sidx[node];
+        int    *vec_out_idx_i  = vec_out_idx + vec_out_sidx[node];
+        double *nvo_nnz_node   = nvo_nnz + nvo_nnz_sidx[node];
+        for (int j = 0; j < vec_out_idx_len; j++)
         {
-            int row_idx0 = leaf_i_out_vec_idx[j];
-            int row_idx1 = row_idx_pmt[row_idx0];
-            int row_idx2 = row_idx_ascend[row_idx0];
-            double *dst = vec_out + row_idx1 * nvec;
-            double *src = leaf_i_vec_out + (row_idx2 - mat_cluster_s) * nvec;
+            double *dst = vec_out + vec_out_idx_i[j] * nvec;
+            double *src = nvo_nnz_node + j * nvec;
             memcpy(dst, src, sizeof(double) * nvec);
         }
     }
@@ -800,54 +852,117 @@ static void H2ERI_build_exchange_dlist(H2ERI_p h2eri, const double *den_mat)
     free(dlist0);
 }
 
+// Copy a sub-matrix of specified rows and columns
+static void H2ERI_copy_submatrix(
+    const double *mat, const int ldm, double *submat, const int lds,
+    const int submat_nrow, const int *submat_row_idx, 
+    const int submat_ncol, const int *submat_col_idx
+)
+{
+    for (int i = 0; i < submat_nrow; i++)
+    {
+        const double *mat_row_i = mat + submat_row_idx[i] * ldm;
+        double *submat_row_i = submat + i * lds;
+        for (int j = 0; j < submat_ncol; j++)
+            submat_row_i[j] = mat_row_i[submat_col_idx[j]];
+    }
+}
+
 // Perform matmul for a B or D block blk which might be a dense block 
 // or a low-rank approximation blk = U * V
 static void H2ERI_BD_blk_matmul(
-    const int trans_blk, H2P_dense_mat_p blk, H2P_dense_mat_p tmp_v,
-    const double *mat_in, double *mat_out, const int nvec
+    const int trans_blk, H2P_dense_mat_p blk, H2P_dense_mat_p tmp_mat,
+    int *tmp_idx, const double *mat_in, double *mat_out, const int nvec,
+    const int submat_nrow, const int *submat_row_idx, 
+    const int submat_ncol, const int *submat_col_idx
 )
 {
     if (blk->ld > 0)
     {
         if (trans_blk == 0)
         {
+            H2P_dense_mat_resize(tmp_mat, submat_nrow, submat_ncol);
+            H2ERI_copy_submatrix(
+                blk->data, blk->ld, tmp_mat->data, tmp_mat->ld,
+                submat_nrow, submat_row_idx, submat_ncol, submat_col_idx
+            );
             CBLAS_GEMM(
-                CblasRowMajor, CblasNoTrans, CblasNoTrans, blk->nrow, nvec, blk->ncol,
-                1.0, blk->data, blk->ld, mat_in, nvec, 1.0, mat_out, nvec
+                CblasRowMajor, CblasNoTrans, CblasNoTrans, submat_nrow, nvec, submat_ncol,
+                1.0, tmp_mat->data, tmp_mat->ld, mat_in, nvec, 1.0, mat_out, nvec
             );
         } else {
+            H2P_dense_mat_resize(tmp_mat, submat_ncol, submat_nrow);
+            H2ERI_copy_submatrix(
+                blk->data, blk->ld, tmp_mat->data, tmp_mat->ld,
+                submat_ncol, submat_col_idx, submat_nrow, submat_row_idx
+            );
             CBLAS_GEMM(
-                CblasRowMajor, CblasTrans, CblasNoTrans, blk->ncol, nvec, blk->nrow,
-                1.0, blk->data, blk->ld, mat_in, nvec, 1.0, mat_out, nvec
+                CblasRowMajor, CblasTrans, CblasNoTrans, submat_nrow, nvec, submat_ncol,
+                1.0, tmp_mat->data, tmp_mat->ld, mat_in, nvec, 1.0, mat_out, nvec
             );
         }
     } else {
         int    blk_rank = -blk->ld;
         double *U_mat   = blk->data;
         double *V_mat   = U_mat + blk->nrow * blk_rank;
+        for (int i = 0; i < blk_rank; i++) tmp_idx[i] = i;
         // U: blk->nrow * blk_rank
         // V: blk_rank  * blk->ncol
-        H2P_dense_mat_resize(tmp_v, blk_rank, nvec);
         if (trans_blk == 0)
         {
             // mat_out = (U * V) * mat_in = U * (V * mat_in)
+            int tmp_mat_size = blk_rank * nvec;      // tmp_v
+            tmp_mat_size += blk_rank * submat_ncol;  // Sub-matrix of V
+            tmp_mat_size += submat_nrow * blk_rank;  // Sub-matrix of U
+            H2P_dense_mat_resize(tmp_mat, blk_rank, nvec);
+            double *tmp_v = tmp_mat->data;
+            double *V_submat = tmp_v + blk_rank * nvec;
+            double *U_submat = V_submat + blk_rank * submat_ncol;
+            
+            H2ERI_copy_submatrix(
+                V_mat, blk->ncol, V_submat, submat_ncol,
+                blk_rank, tmp_idx, submat_ncol, submat_col_idx
+            );
+            H2ERI_copy_submatrix(
+                U_mat, blk_rank, U_submat, blk_rank,
+                submat_nrow, submat_row_idx, blk_rank, tmp_idx
+            );
+
             CBLAS_GEMM(
-                CblasRowMajor, CblasNoTrans, CblasNoTrans, blk_rank, nvec, blk->ncol,
-                1.0, V_mat, blk->ncol, mat_in, nvec, 0.0, tmp_v->data, nvec
+                CblasRowMajor, CblasNoTrans, CblasNoTrans, blk_rank, nvec, submat_ncol,
+                1.0, V_submat, submat_ncol, mat_in, nvec, 0.0, tmp_v, nvec
             );
             CBLAS_GEMM(
-                CblasRowMajor, CblasNoTrans, CblasNoTrans, blk->nrow, nvec, blk_rank,
-                1.0, U_mat, blk_rank, tmp_v->data, nvec, 1.0, mat_out, nvec
+                CblasRowMajor, CblasNoTrans, CblasNoTrans, submat_nrow, nvec, blk_rank,
+                1.0, U_submat, blk_rank, tmp_v, nvec, 1.0, mat_out, nvec
             );
         } else {
             // mat_out = (U * V)^T * mat_in = V^T * (U^T * mat_in)
-            CBLAS_GEMM(
-                CblasRowMajor, CblasTrans, CblasNoTrans, blk_rank, nvec, blk->nrow,
-                1.0, U_mat, blk_rank, mat_in, nvec, 0.0, tmp_v->data, nvec
+            int tmp_mat_size = blk_rank * nvec;      // tmp_v
+            tmp_mat_size += submat_ncol * blk_rank;  // Sub-matrix of U
+            tmp_mat_size += blk_rank * submat_nrow;  // Sub-matrix of V
+            
+            H2P_dense_mat_resize(tmp_mat, blk_rank, nvec);
+            double *tmp_v = tmp_mat->data;
+            double *U_submat = tmp_v + blk_rank * nvec;
+            double *V_submat = U_submat + submat_ncol * blk_rank;
+
+            H2ERI_copy_submatrix(
+                U_mat, blk_rank, U_submat, blk_rank,
+                submat_ncol, submat_col_idx, blk_rank, tmp_idx
             );
             CBLAS_GEMM(
-                CblasRowMajor, CblasTrans, CblasNoTrans, blk->ncol, nvec, blk_rank,
-                1.0, V_mat, blk->ncol, tmp_v->data, nvec, 1.0, mat_out, nvec
+                CblasRowMajor, CblasTrans, CblasNoTrans, blk_rank, nvec, submat_ncol,
+                1.0, U_submat, blk_rank, mat_in, nvec, 0.0, tmp_v, nvec
+            );
+
+            H2ERI_copy_submatrix(
+                V_mat, blk->ncol, V_submat, submat_nrow,
+                blk_rank, tmp_idx, submat_nrow, submat_row_idx
+            );
+            CBLAS_GEMM(
+                CblasRowMajor, CblasTrans, CblasNoTrans, submat_nrow, nvec, blk_rank,
+                1.0, V_submat, submat_nrow, tmp_v, nvec, 1.0, mat_out, nvec
             );
         }
     }
@@ -873,7 +988,9 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
     H2P_dense_mat_p  *U        = h2pack->U;
     H2P_dense_mat_p  *c_B_blks = h2eri->c_B_blks;
     H2P_dense_mat_p  *c_D_blks = h2eri->c_D_blks;
-    H2P_dense_mat_p  tmp_v     = h2pack->tb[tid]->mat0;
+    H2P_dense_mat_p  tmp_mat   = h2pack->tb[tid]->mat0;
+    H2P_int_vec_p    tmp_idx0  = h2pack->tb[tid]->idx0;
+    H2P_int_vec_p    tmp_idx1  = h2pack->tb[tid]->idx1;
 
     int *node_adm_pairs        = h2eri->node_adm_pairs;
     int *node_adm_pairs_sidx   = h2eri->node_adm_pairs_sidx;
@@ -885,12 +1002,17 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
     int    col_max_level       = workbuf->col_max_level;
     int    *row_node_flag      = workbuf->row_node_flag;
     int    *col_node_flag      = workbuf->col_node_flag;
-    int    *node_vec_in_sidx   = workbuf->node_vec_in_sidx;
-    int    *node_vec_out_sidx  = workbuf->node_vec_out_sidx;
+    int    *nvi_nnz_row_idx    = workbuf->nvi_nnz_row_idx;
+    int    *nvo_nnz_row_idx    = workbuf->nvo_nnz_row_idx;
+    int    *nvi_nnz_row_sidx   = workbuf->nvi_nnz_row_sidx;
+    int    *nvo_nnz_row_sidx   = workbuf->nvo_nnz_row_sidx;
+    int    *nvi_nnz_sidx       = workbuf->nvi_nnz_sidx;
+    int    *nvo_nnz_sidx       = workbuf->nvo_nnz_sidx;
     int    *y0_sidx            = workbuf->y0_sidx;
     int    *y1_sidx            = workbuf->y1_sidx;
-    double *node_vec_in        = workbuf->node_vec_in;
-    double *node_vec_out       = workbuf->node_vec_out;
+    int    *tmp_idx2           = workbuf->tmp_arr;
+    double *nvi_nnz            = workbuf->nvi_nnz;
+    double *nvo_nnz            = workbuf->nvo_nnz;
     double *y0                 = workbuf->y0;
     double *y1                 = workbuf->y1;
 
@@ -964,10 +1086,19 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
             }  // End of k loop
             if (child_cnt == 0)
             {
-                double *B = node_vec_in + node_vec_in_sidx[node];
+                double *B = nvi_nnz + nvi_nnz_sidx[node];
+                int num_nnz_row = nvi_nnz_row_sidx[node + 1] - nvi_nnz_row_sidx[node];
+                int *nnz_row = nvi_nnz_row_idx + nvi_nnz_row_sidx[node];
+                H2P_dense_mat_resize(tmp_mat, num_nnz_row, U_node->ncol);
+                for (int l = 0; l < num_nnz_row; l++)
+                {
+                    double *src = U_node->data + nnz_row[l] * U_node->ncol;
+                    double *dst = tmp_mat->data + l * U_node->ncol;
+                    memcpy(dst, src, sizeof(double) * U_node->ncol);
+                }
                 CBLAS_GEMM(
-                    CblasRowMajor, CblasTrans, CblasNoTrans, U_node->ncol, nvec, U_node->nrow,
-                    1.0, U_node->data, U_node->ld, B, nvec, 1.0, y0_node, nvec
+                    CblasRowMajor, CblasTrans, CblasNoTrans, tmp_mat->ncol, nvec, num_nnz_row,
+                    1.0, tmp_mat->data, tmp_mat->ld, B, nvec, 1.0, y0_node, nvec
                 );
             }
         }  // End of j loop
@@ -980,14 +1111,32 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
     for (int node0 = 0; node0 < n_node; node0++)
     {
         if (row_node_flag[node0] == 0) continue;
+        
         int node0_n_adm_pair = node_adm_pairs_sidx[node0 + 1] - node_adm_pairs_sidx[node0];
         int *node0_adm_pairs = node_adm_pairs + node_adm_pairs_sidx[node0];
+        
+        int node0_num_nnz_row  = nvo_nnz_row_sidx[node0 + 1] - nvo_nnz_row_sidx[node0];
+        int *node0_nnz_row_idx = nvo_nnz_row_idx + nvo_nnz_row_sidx[node0];
+        
+        int y1_node0_nrow = (y1_sidx[node0 + 1] - y1_sidx[node0]) / nvec;
+        H2P_int_vec_set_capacity(tmp_idx0, y1_node0_nrow);
+        for (int k = 0; k < y1_node0_nrow; k++)
+            tmp_idx0->data[k] = k;
+        tmp_idx0->length = y1_node0_nrow;
+
         for (int j = 0; j < node0_n_adm_pair; j++)
         {
             int node1 = node0_adm_pairs[j];
             if (col_node_flag[node1] == 0) continue;
-            int level0 = node_level[node0];
-            int level1 = node_level[node1];
+
+            int node1_num_nnz_row  = nvi_nnz_row_sidx[node1 + 1] - nvi_nnz_row_sidx[node1];
+            int *node1_nnz_row_idx = nvi_nnz_row_idx + nvi_nnz_row_sidx[node1];
+
+            int y0_node1_nrow = (y0_sidx[node1 + 1] - y0_sidx[node1]) / nvec;
+            H2P_int_vec_set_capacity(tmp_idx1, y0_node1_nrow);
+            for (int k = 0; k < y0_node1_nrow; k++)
+                tmp_idx1->data[k] = k;
+            tmp_idx1->length = y0_node1_nrow;
 
             int pair_idx_ij = H2P_get_int_CSR_elem(B_p2i_rowptr, B_p2i_colidx, B_p2i_val, node0, node1);
             ASSERT_PRINTF(pair_idx_ij != 0, "Cannot find Bij for i = %d, j = %d\n", node0, node1);
@@ -1002,21 +1151,34 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
                 Bi = c_B_blks[-pair_idx_ij - 1];
             }
 
+            int level0 = node_level[node0];
+            int level1 = node_level[node1];
+
             // (1) Two nodes are of the same level, compress on both sides
             if (level0 == level1)
             {
                 double *y0_node1 = y0 + y0_sidx[node1];
                 double *y1_node0 = y1 + y1_sidx[node0];
-                H2ERI_BD_blk_matmul(trans_blk, Bi, tmp_v, y0_node1, y1_node0, nvec);
+                H2ERI_BD_blk_matmul(
+                    trans_blk, Bi, tmp_mat, tmp_idx2,
+                    y0_node1, y1_node0, nvec,
+                    tmp_idx0->length, tmp_idx0->data,
+                    tmp_idx1->length, tmp_idx1->data
+                );
             }
 
             // (2) node1 is a leaf node and its level is higher than node0's level, 
             //     only compress on node0's side
             if (level0 > level1)
             {
-                double *node1_vec_in = node_vec_in + node_vec_in_sidx[node1];
+                double *node1_vec_in = nvi_nnz + nvi_nnz_sidx[node1];
                 double *y1_node0     = y1 + y1_sidx[node0];
-                H2ERI_BD_blk_matmul(trans_blk, Bi, tmp_v, node1_vec_in, y1_node0, nvec);
+                H2ERI_BD_blk_matmul(
+                    trans_blk, Bi, tmp_mat, tmp_idx2,
+                    node1_vec_in, y1_node0, nvec,
+                    tmp_idx0->length,  tmp_idx0->data,
+                    node1_num_nnz_row, node1_nnz_row_idx
+                );
             }
 
             // (3) node0 is a leaf node and its level is higher than node1's level, 
@@ -1024,8 +1186,13 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
             if (level0 < level1)
             {
                 double *y0_node1      = y0 + y0_sidx[node1];
-                double *node0_vec_out = node_vec_out + node_vec_out_sidx[node0];
-                H2ERI_BD_blk_matmul(trans_blk, Bi, tmp_v, y0_node1, node0_vec_out, nvec);
+                double *node0_vec_out = nvo_nnz + nvo_nnz_sidx[node0];
+                H2ERI_BD_blk_matmul(
+                    trans_blk, Bi, tmp_mat, tmp_idx2, 
+                    y0_node1, node0_vec_out, nvec,
+                    node0_num_nnz_row, node0_nnz_row_idx, 
+                    tmp_idx1->length,  tmp_idx1->data
+                );
             }
         }  // End of j loop
     }  // End of node0 loop
@@ -1067,10 +1234,19 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
             }  // End of k loop
             if (child_cnt == 0)
             {
-                double *C = node_vec_out + node_vec_out_sidx[node];
+                double *C = nvo_nnz + nvo_nnz_sidx[node];
+                int num_nnz_row = nvo_nnz_row_sidx[node + 1] - nvo_nnz_row_sidx[node];
+                int *nnz_row = nvo_nnz_row_idx + nvo_nnz_row_sidx[node];
+                H2P_dense_mat_resize(tmp_mat, num_nnz_row, U_node->ncol);
+                for (int l = 0; l < num_nnz_row; l++)
+                {
+                    double *src = U_node->data + nnz_row[l] * U_node->ncol;
+                    double *dst = tmp_mat->data + l * U_node->ncol;
+                    memcpy(dst, src, sizeof(double) * U_node->ncol);
+                }
                 CBLAS_GEMM(
-                    CblasRowMajor, CblasNoTrans, CblasNoTrans, U_node->nrow, nvec, U_node->ncol,
-                    1.0, U_node->data, U_node->ld, y1_node, nvec, 1.0, C, nvec
+                    CblasRowMajor, CblasNoTrans, CblasNoTrans, num_nnz_row, nvec, tmp_mat->ncol,
+                    1.0, tmp_mat->data, tmp_mat->ld, y1_node, nvec, 1.0, C, nvec
                 );
             }
         }  // End of j loop
@@ -1083,13 +1259,21 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
     for (int node0 = 0; node0 < n_node; node0++)
     {
         if (row_node_flag[node0] == 0) continue;
+        double *node0_vec_out = nvo_nnz + nvo_nnz_sidx[node0];
+
         int node0_n_inadm_pair = node_inadm_pairs_sidx[node0 + 1] - node_inadm_pairs_sidx[node0];
         int *node0_inadm_pairs = node_inadm_pairs + node_inadm_pairs_sidx[node0];
-        double *node0_vec_out = node_vec_out + node_vec_out_sidx[node0];
+
+        int node0_num_nnz_row  = nvo_nnz_row_sidx[node0 + 1] - nvo_nnz_row_sidx[node0];
+        int *node0_nnz_row_idx = nvo_nnz_row_idx + nvo_nnz_row_sidx[node0];
         for (int j = 0; j < node0_n_inadm_pair; j++)
         {
             int node1 = node0_inadm_pairs[j];
             if (col_node_flag[node1] == 0) continue;
+            double *node1_vec_in = nvi_nnz + nvi_nnz_sidx[node1];
+
+            int node1_num_nnz_row  = nvi_nnz_row_sidx[node1 + 1] - nvi_nnz_row_sidx[node1];
+            int *node1_nnz_row_idx = nvi_nnz_row_idx + nvi_nnz_row_sidx[node1];
 
             int pair_idx_ij = H2P_get_int_CSR_elem(D_p2i_rowptr, D_p2i_colidx, D_p2i_val, node0, node1);
             ASSERT_PRINTF(pair_idx_ij != 0, "Cannot find Dij for i = %d, j = %d\n", node0, node1);
@@ -1104,8 +1288,12 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
                 Di = c_D_blks[-pair_idx_ij - 1];
             }
 
-            double *node1_vec_in = node_vec_in + node_vec_in_sidx[node1];
-            H2ERI_BD_blk_matmul(trans_blk, Di, tmp_v, node1_vec_in, node0_vec_out, nvec);
+            H2ERI_BD_blk_matmul(
+                trans_blk, Di, tmp_mat, tmp_idx2,
+                node1_vec_in, node0_vec_out, nvec,
+                node0_num_nnz_row, node0_nnz_row_idx, 
+                node1_num_nnz_row, node1_nnz_row_idx
+            );
         }  // End of j loop
     }  // End of node0 loop
     et = get_wtime_sec();
