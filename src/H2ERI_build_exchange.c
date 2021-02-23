@@ -100,7 +100,7 @@ void H2ERI_exchange_workbuf_init(H2ERI_p h2eri)
     int n_thread        = h2eri->h2pack->n_thread;
     int n_node          = h2eri->h2pack->n_node;
     int n_leaf_node     = h2eri->h2pack->n_leaf_node;
-    int max_leaf_points = h2eri->h2pack->max_leaf_points;
+    int num_sp_bfp      = h2eri->num_sp_bfp;
     Kmat_workbuf_p *thread_Kmat_workbuf = (Kmat_workbuf_p *) malloc(sizeof(Kmat_workbuf_p) * n_thread);
     #pragma omp parallel num_threads(n_thread)
     {
@@ -136,7 +136,7 @@ void H2ERI_exchange_workbuf_init(H2ERI_p h2eri)
         // y0_sidx, y1_sidx, tmp_arr
         int_buffer_size += n_node + 1;
         int_buffer_size += n_node + 1;
-        int_buffer_size += max_leaf_points;
+        int_buffer_size += num_sp_bfp;   // This is a safe upper bound for tmp_arr
 
         int *int_buffer = (int *) malloc(sizeof(int) * int_buffer_size);
         ASSERT_PRINTF(int_buffer != NULL, "Failed to allocate int_buffer of size %d\n", int_buffer_size);
@@ -307,6 +307,7 @@ static void H2ERI_exchange_workbuf_update_MN_list(
         workbuf->M_cut = i;
         break;
     }
+    if (M_list[num_M - 1] <= N) workbuf->M_cut = num_M;
 
     // Offset for the output vector indexed by M_list * N
     int *MN_bfp_sidx = workbuf->MN_bfp_sidx;
@@ -444,6 +445,7 @@ static void H2ERI_exchange_workbuf_update_PQ_list(
         workbuf->P_cut = i;
         break;
     }
+    if (P_list[num_P - 1] <= Q) workbuf->P_cut = num_P;
 
     // Column indices of P_list * Q out of shell pair
     int *sp_bfp_sidx = h2eri->sp_bfp_sidx;
