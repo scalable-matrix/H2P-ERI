@@ -856,23 +856,33 @@ static void H2ERI_build_exchange_dlist(H2ERI_p h2eri, const double *den_mat)
 
 // Copy a sub-matrix of specified rows and columns
 static void H2ERI_copy_submatrix(
-    const double *mat, const int ldm, double *submat, const int lds,
-    const int submat_nrow, const int *submat_row_idx, 
-    const int submat_ncol, const int *submat_col_idx
+    const double *mat, const int ldm, const int ncol, double *submat, const int lds,
+    const int submat_nrow, const int *submat_row_idx, const int submat_ncol, const int *submat_col_idx
 )
 {
-    for (int i = 0; i < submat_nrow; i++)
+    if (ncol > submat_ncol)
     {
-        const double *mat_row_i = mat + submat_row_idx[i] * ldm;
-        double *submat_row_i = submat + i * lds;
-        for (int j = 0; j < submat_ncol; j++)
-            submat_row_i[j] = mat_row_i[submat_col_idx[j]];
+        for (int i = 0; i < submat_nrow; i++)
+        {
+            const double *mat_row_i = mat + submat_row_idx[i] * ldm;
+            double *submat_row_i = submat + i * lds;
+            for (int j = 0; j < submat_ncol; j++)
+                submat_row_i[j] = mat_row_i[submat_col_idx[j]];
+        }
+    } else {
+        size_t row_bytes = sizeof(double) * ncol;
+        for (int i = 0; i < submat_nrow; i++)
+        {
+            const double *mat_row_i = mat + submat_row_idx[i] * ldm;
+            double *submat_row_i = submat + i * lds;
+            memcpy(submat_row_i, mat_row_i, row_bytes);
+        }
     }
 }
 
-// Perform matmul for a B or D block blk which might be a dense block 
-// or a low-rank approximation blk = U * V
-static void H2ERI_BD_blk_matmul(
+// Perform matmul for a sub-matrix of B or D block blk which might 
+// be a dense block or a low-rank approximation blk = U * V
+static void H2ERI_BD_blk_submat_matmul(
     const int trans_blk, H2P_dense_mat_p blk, H2P_dense_mat_p tmp_mat,
     int *tmp_idx, const double *mat_in, double *mat_out, const int nvec,
     const int submat_nrow, const int *submat_row_idx, 
@@ -885,7 +895,7 @@ static void H2ERI_BD_blk_matmul(
         {
             H2P_dense_mat_resize(tmp_mat, submat_nrow, submat_ncol);
             H2ERI_copy_submatrix(
-                blk->data, blk->ld, tmp_mat->data, tmp_mat->ld,
+                blk->data, blk->ld, blk->ncol, tmp_mat->data, tmp_mat->ld, 
                 submat_nrow, submat_row_idx, submat_ncol, submat_col_idx
             );
             CBLAS_GEMM(
@@ -895,7 +905,7 @@ static void H2ERI_BD_blk_matmul(
         } else {
             H2P_dense_mat_resize(tmp_mat, submat_ncol, submat_nrow);
             H2ERI_copy_submatrix(
-                blk->data, blk->ld, tmp_mat->data, tmp_mat->ld,
+                blk->data, blk->ld, blk->ncol, tmp_mat->data, tmp_mat->ld, 
                 submat_ncol, submat_col_idx, submat_nrow, submat_row_idx
             );
             CBLAS_GEMM(
@@ -906,10 +916,11 @@ static void H2ERI_BD_blk_matmul(
     } else {
         int    blk_rank = -blk->ld;
         double *U_mat   = blk->data;
-        double *V_mat   = U_mat + blk->nrow * blk_rank;
+        double *VT_mat  = U_mat + blk->nrow * blk_rank;
         for (int i = 0; i < blk_rank; i++) tmp_idx[i] = i;
         // U: blk->nrow * blk_rank
         // V: blk_rank  * blk->ncol
+        // Note: V^T instead of V is stored
         if (trans_blk == 0)
         {
             // mat_out = (U * V) * mat_in = U * (V * mat_in)
@@ -918,21 +929,21 @@ static void H2ERI_BD_blk_matmul(
             tmp_mat_size += submat_nrow * blk_rank;  // Sub-matrix of U
             H2P_dense_mat_resize(tmp_mat, blk_rank, nvec);
             double *tmp_v = tmp_mat->data;
-            double *V_submat = tmp_v + blk_rank * nvec;
-            double *U_submat = V_submat + blk_rank * submat_ncol;
+            double *VT_submat = tmp_v + blk_rank * nvec;
+            double *U_submat  = VT_submat + blk_rank * submat_ncol;
             
             H2ERI_copy_submatrix(
-                V_mat, blk->ncol, V_submat, submat_ncol,
-                blk_rank, tmp_idx, submat_ncol, submat_col_idx
+                VT_mat, blk_rank, blk_rank, VT_submat, blk_rank, 
+                submat_ncol, submat_col_idx, blk_rank, tmp_idx
             );
             H2ERI_copy_submatrix(
-                U_mat, blk_rank, U_submat, blk_rank,
+                U_mat, blk_rank, blk_rank, U_submat, blk_rank, 
                 submat_nrow, submat_row_idx, blk_rank, tmp_idx
             );
 
             CBLAS_GEMM(
-                CblasRowMajor, CblasNoTrans, CblasNoTrans, blk_rank, nvec, submat_ncol,
-                1.0, V_submat, submat_ncol, mat_in, nvec, 0.0, tmp_v, nvec
+                CblasRowMajor, CblasTrans, CblasNoTrans, blk_rank, nvec, submat_ncol,
+                1.0, VT_submat, blk_rank, mat_in, nvec, 0.0, tmp_v, nvec
             );
             CBLAS_GEMM(
                 CblasRowMajor, CblasNoTrans, CblasNoTrans, submat_nrow, nvec, blk_rank,
@@ -946,11 +957,11 @@ static void H2ERI_BD_blk_matmul(
             
             H2P_dense_mat_resize(tmp_mat, blk_rank, nvec);
             double *tmp_v = tmp_mat->data;
-            double *U_submat = tmp_v + blk_rank * nvec;
-            double *V_submat = U_submat + submat_ncol * blk_rank;
+            double *U_submat  = tmp_v + blk_rank * nvec;
+            double *VT_submat = U_submat + submat_ncol * blk_rank;
 
             H2ERI_copy_submatrix(
-                U_mat, blk_rank, U_submat, blk_rank,
+                U_mat, blk_rank, blk_rank, U_submat, blk_rank, 
                 submat_ncol, submat_col_idx, blk_rank, tmp_idx
             );
             CBLAS_GEMM(
@@ -959,12 +970,66 @@ static void H2ERI_BD_blk_matmul(
             );
 
             H2ERI_copy_submatrix(
-                V_mat, blk->ncol, V_submat, submat_nrow,
-                blk_rank, tmp_idx, submat_nrow, submat_row_idx
+                VT_mat, blk_rank, blk_rank, VT_submat, blk_rank,
+                submat_nrow, submat_row_idx, blk_rank, tmp_idx
             );
             CBLAS_GEMM(
-                CblasRowMajor, CblasTrans, CblasNoTrans, submat_nrow, nvec, blk_rank,
-                1.0, V_submat, submat_nrow, tmp_v, nvec, 1.0, mat_out, nvec
+                CblasRowMajor, CblasNoTrans, CblasNoTrans, submat_nrow, nvec, blk_rank,
+                1.0, VT_submat, blk_rank, tmp_v, nvec, 1.0, mat_out, nvec
+            );
+        }
+    }
+}
+
+// Perform matmul for a B or D block blk which might be a dense block 
+// or a low-rank approximation blk = U * V
+static void H2ERI_BD_blk_matmul(
+    const int trans_blk, H2P_dense_mat_p blk, H2P_dense_mat_p tmp_v,
+    const double *mat_in, double *mat_out, const int nvec
+)
+{
+    if (blk->ld > 0)
+    {
+        if (trans_blk == 0)
+        {
+            CBLAS_GEMM(
+                CblasRowMajor, CblasNoTrans, CblasNoTrans, blk->nrow, nvec, blk->ncol,
+                1.0, blk->data, blk->ld, mat_in, nvec, 1.0, mat_out, nvec
+            );
+        } else {
+            CBLAS_GEMM(
+                CblasRowMajor, CblasTrans, CblasNoTrans, blk->ncol, nvec, blk->nrow,
+                1.0, blk->data, blk->ld, mat_in, nvec, 1.0, mat_out, nvec
+            );
+        }
+    } else {
+        int    blk_rank = -blk->ld;
+        double *U_mat   = blk->data;
+        double *VT_mat  = U_mat + blk->nrow * blk_rank;
+        // U: blk->nrow * blk_rank
+        // V: blk_rank  * blk->ncol
+        // Note: V^T instead of V is stored
+        H2P_dense_mat_resize(tmp_v, blk_rank, nvec);
+        if (trans_blk == 0)
+        {
+            // mat_out = (U * V) * mat_in = U * (V * mat_in)
+            CBLAS_GEMM(
+                CblasRowMajor, CblasTrans, CblasNoTrans, blk_rank, nvec, blk->ncol,
+                1.0, VT_mat, blk_rank, mat_in, nvec, 0.0, tmp_v->data, nvec
+            );
+            CBLAS_GEMM(
+                CblasRowMajor, CblasNoTrans, CblasNoTrans, blk->nrow, nvec, blk_rank,
+                1.0, U_mat, blk_rank, tmp_v->data, nvec, 1.0, mat_out, nvec
+            );
+        } else {
+            // mat_out = (U * V)^T * mat_in = V^T * (U^T * mat_in)
+            CBLAS_GEMM(
+                CblasRowMajor, CblasTrans, CblasNoTrans, blk_rank, nvec, blk->nrow,
+                1.0, U_mat, blk_rank, mat_in, nvec, 0.0, tmp_v->data, nvec
+            );
+            CBLAS_GEMM(
+                CblasRowMajor, CblasNoTrans, CblasNoTrans, blk->ncol, nvec, blk_rank,
+                1.0, VT_mat, blk_rank, tmp_v->data, nvec, 1.0, mat_out, nvec
             );
         }
     }
@@ -1161,12 +1226,7 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
             {
                 double *y0_node1 = y0 + y0_sidx[node1];
                 double *y1_node0 = y1 + y1_sidx[node0];
-                H2ERI_BD_blk_matmul(
-                    trans_blk, Bi, tmp_mat, tmp_idx2,
-                    y0_node1, y1_node0, nvec,
-                    tmp_idx0->length, tmp_idx0->data,
-                    tmp_idx1->length, tmp_idx1->data
-                );
+                H2ERI_BD_blk_matmul(trans_blk, Bi, tmp_mat, y0_node1, y1_node0, nvec);
             }
 
             // (2) node1 is a leaf node and its level is higher than node0's level, 
@@ -1175,7 +1235,7 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
             {
                 double *node1_vec_in = nvi_nnz + nvi_nnz_sidx[node1];
                 double *y1_node0     = y1 + y1_sidx[node0];
-                H2ERI_BD_blk_matmul(
+                H2ERI_BD_blk_submat_matmul(
                     trans_blk, Bi, tmp_mat, tmp_idx2,
                     node1_vec_in, y1_node0, nvec,
                     tmp_idx0->length,  tmp_idx0->data,
@@ -1189,7 +1249,7 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
             {
                 double *y0_node1      = y0 + y0_sidx[node1];
                 double *node0_vec_out = nvo_nnz + nvo_nnz_sidx[node0];
-                H2ERI_BD_blk_matmul(
+                H2ERI_BD_blk_submat_matmul(
                     trans_blk, Bi, tmp_mat, tmp_idx2, 
                     y0_node1, node0_vec_out, nvec,
                     node0_num_nnz_row, node0_nnz_row_idx, 
@@ -1290,7 +1350,7 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
                 Di = c_D_blks[-pair_idx_ij - 1];
             }
 
-            H2ERI_BD_blk_matmul(
+            H2ERI_BD_blk_submat_matmul(
                 trans_blk, Di, tmp_mat, tmp_idx2,
                 node1_vec_in, node0_vec_out, nvec,
                 node0_num_nnz_row, node0_nnz_row_idx, 

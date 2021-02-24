@@ -167,14 +167,17 @@ void H2ERI_BD_blk_bi_matvec(
             x_in_0, x_in_1, x_out_0, x_out_1
         );
     } else {
+        // U: blk->nrow * blk_rank
+        // V: blk_rank  * blk->ncol
+        // Note: V^T instead of V is stored
         int    blk_rank = -blk->ld;
         double *U_mat   = blk->data;
-        double *V_mat   = U_mat + blk->nrow * blk_rank;
+        double *VT_mat  = U_mat + blk->nrow * blk_rank;
         H2P_dense_mat_resize(tmp_v, blk_rank, 1);
         // x_out_0 = (U * V) * x_in_0 = U * V * x_in_0
         CBLAS_GEMV(
-            CblasRowMajor, CblasNoTrans, blk_rank, blk->ncol,
-            1.0, V_mat, blk->ncol, x_in_0, 1, 0.0, tmp_v->data, 1
+            CblasRowMajor, CblasTrans, blk->ncol, blk_rank, 
+            1.0, VT_mat, blk_rank, x_in_0, 1, 0.0, tmp_v->data, 1
         );
         CBLAS_GEMV(
             CblasRowMajor, CblasNoTrans, blk->nrow, blk_rank,
@@ -186,8 +189,8 @@ void H2ERI_BD_blk_bi_matvec(
             1.0, U_mat, blk_rank, x_in_1, 1, 0.0, tmp_v->data, 1
         );
         CBLAS_GEMV(
-            CblasRowMajor, CblasTrans, blk_rank, blk->ncol,
-            1.0, V_mat, blk->ncol, tmp_v->data, 1, 1.0, x_out_1, 1
+            CblasRowMajor, CblasNoTrans, blk->ncol, blk_rank, 
+            1.0, VT_mat, blk_rank, tmp_v->data, 1, 1.0, x_out_1, 1
         );
     }
 }

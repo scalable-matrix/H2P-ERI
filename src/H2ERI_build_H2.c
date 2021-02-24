@@ -984,16 +984,26 @@ void H2ERI_compress_BD_blk(
         res_blk->nrow = blk_nrow;
         res_blk->ncol = blk_ncol;
         res_blk->ld   = -blk_rank;
-        double *U_ptr  = res_blk->data;
-        double *BJ_ptr = U_ptr + blk_nrow * blk_rank;
+        double *U_ptr = res_blk->data;
+        double *V_ptr = U_ptr + blk_nrow * blk_rank;
         memcpy(U_ptr, U_mat->data, sizeof(double) * blk_nrow * blk_rank);
+        #if 0
         for (int k = 0; k < blk_rank; k++)
         {
-            double *dst = BJ_ptr + k * blk_ncol;
+            double *dst = V_ptr + k * blk_ncol;
             double *src = blk0->data + J->data[k] * blk_ncol;
             size_t row_msize = sizeof(double) * blk_ncol;
             memcpy(dst, src, row_msize);
         }
+        #else
+        // Transpose V here to reduce the sub-matrix copy time in build_exchange
+        for (int l = 0; l < blk_ncol; l++)
+        {
+            double *V_row_l = V_ptr + l * blk_rank;
+            for (int k = 0; k < blk_rank; k++)
+                V_row_l[k] = blk0->data[J->data[k] * blk_ncol + l];
+        }
+        #endif
     }
 }
 
