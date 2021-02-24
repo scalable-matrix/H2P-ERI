@@ -841,7 +841,7 @@ static void H2ERI_build_exchange_dlist(H2ERI_p h2eri, const double *den_mat)
 
     dlist_sidx[0] = 0;
     for (int i = 1; i <= nshell; i++)
-        dlist_sidx[i] = dlist_sidx[i - 1] + dlist_cnt[i];
+        dlist_sidx[i] = dlist_sidx[i - 1] + dlist_cnt[i - 1];
     int dlist_size = dlist_sidx[nshell];
     free(h2eri->dlist);
     int *dlist = (int *) malloc(sizeof(int) * dlist_size);
