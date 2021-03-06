@@ -984,16 +984,26 @@ void H2ERI_compress_BD_blk(
         res_blk->nrow = blk_nrow;
         res_blk->ncol = blk_ncol;
         res_blk->ld   = -blk_rank;
-        double *U_ptr  = res_blk->data;
-        double *BJ_ptr = U_ptr + blk_nrow * blk_rank;
+        double *U_ptr = res_blk->data;
+        double *V_ptr = U_ptr + blk_nrow * blk_rank;
         memcpy(U_ptr, U_mat->data, sizeof(double) * blk_nrow * blk_rank);
+        #if 0
         for (int k = 0; k < blk_rank; k++)
         {
-            double *dst = BJ_ptr + k * blk_ncol;
+            double *dst = V_ptr + k * blk_ncol;
             double *src = blk0->data + J->data[k] * blk_ncol;
             size_t row_msize = sizeof(double) * blk_ncol;
             memcpy(dst, src, row_msize);
         }
+        #else
+        // Transpose V here to reduce the sub-matrix copy time in build_exchange
+        for (int l = 0; l < blk_ncol; l++)
+        {
+            double *V_row_l = V_ptr + l * blk_rank;
+            for (int k = 0; k < blk_rank; k++)
+                V_row_l[k] = blk0->data[J->data[k] * blk_ncol + l];
+        }
+        #endif
     }
 }
 
@@ -1033,6 +1043,15 @@ void H2ERI_build_B(H2ERI_p h2eri)
     int    *B_ncol = h2pack->B_ncol;
     size_t *B_ptr  = h2pack->B_ptr;
     assert(h2pack->B_nrow != NULL && h2pack->B_ncol != NULL && h2pack->B_ptr != NULL);
+
+    int B_pair_cnt = 0;
+    int *B_pair_i = (int*) malloc(sizeof(int) * n_r_adm_pair * 2);
+    int *B_pair_j = (int*) malloc(sizeof(int) * n_r_adm_pair * 2);
+    int *B_pair_v = (int*) malloc(sizeof(int) * n_r_adm_pair * 2);
+    ASSERT_PRINTF(
+        B_pair_i != NULL && B_pair_j != NULL && B_pair_v != NULL,
+        "Failed to allocate working buffer for B matrices indexing\n"
+    );
     
     // 2. Partition B matrices into multiple blocks s.t. each block has approximately
     //    the same workload (total size of B matrices in a block)
@@ -1072,10 +1091,33 @@ void H2ERI_build_B(H2ERI_p h2eri)
         size_t Bi_size = (size_t) B_nrow[i] * (size_t) B_ncol[i];
         B_total_size += Bi_size;
         B_ptr[i + 1] = Bi_size;
+        B_pair_i[B_pair_cnt] = node0;
+        B_pair_j[B_pair_cnt] = node1;
+        B_pair_v[B_pair_cnt] = i + 1;
+        B_pair_cnt++;
+        B_pair_i[B_pair_cnt] = node1;
+        B_pair_j[B_pair_cnt] = node0;
+        B_pair_v[B_pair_cnt] = -(i + 1);
+        B_pair_cnt++;
     }
     int BD_ntask_thread = (BD_JIT == 1) ? BD_NTASK_THREAD : 1;
     H2P_partition_workload(n_r_adm_pair, B_ptr + 1, B_total_size, n_thread * BD_ntask_thread, B_blk);
     for (int i = 1; i <= n_r_adm_pair; i++) B_ptr[i] += B_ptr[i - 1];
+
+    // 2.1 Store pair-to-index relations in a CSR matrix for matvec, matmul
+    h2pack->B_p2i_rowptr = (int*) malloc(sizeof(int) * (n_node + 1));
+    h2pack->B_p2i_colidx = (int*) malloc(sizeof(int) * n_r_adm_pair * 2);
+    h2pack->B_p2i_val    = (int*) malloc(sizeof(int) * n_r_adm_pair * 2);
+    ASSERT_PRINTF(h2pack->B_p2i_rowptr != NULL, "Failed to allocate arrays for B matrices indexing\n");
+    ASSERT_PRINTF(h2pack->B_p2i_colidx != NULL, "Failed to allocate arrays for B matrices indexing\n");
+    ASSERT_PRINTF(h2pack->B_p2i_val    != NULL, "Failed to allocate arrays for B matrices indexing\n");
+    H2P_int_COO_to_CSR(
+        n_node, B_pair_cnt, B_pair_i, B_pair_j, B_pair_v, 
+        h2pack->B_p2i_rowptr, h2pack->B_p2i_colidx, h2pack->B_p2i_val
+    );
+    free(B_pair_i);
+    free(B_pair_j);
+    free(B_pair_v);
     
     if (BD_JIT == 1) return;
     
@@ -1225,6 +1267,7 @@ void H2ERI_build_D(H2ERI_p h2eri)
     H2Pack_p h2pack = h2eri->h2pack;
     int BD_JIT           = h2pack->BD_JIT;
     int n_thread         = h2pack->n_thread;
+    int n_node           = h2pack->n_node;
     int n_leaf_node      = h2pack->n_leaf_node;
     int n_r_inadm_pair   = h2pack->n_r_inadm_pair;
     int *leaf_nodes      = h2pack->height_nodes;
@@ -1249,6 +1292,16 @@ void H2ERI_build_D(H2ERI_p h2eri)
     int    *D_ncol = h2pack->D_ncol;
     size_t *D_ptr  = h2pack->D_ptr;
     assert(h2pack->D_nrow != NULL && h2pack->D_ncol != NULL && h2pack->D_ptr != NULL);
+
+    int D_pair_cnt = 0;
+    int n_Dij_pair = n_leaf_node + 2 * n_r_inadm_pair;
+    int *D_pair_i = (int*) malloc(sizeof(int) * n_Dij_pair);
+    int *D_pair_j = (int*) malloc(sizeof(int) * n_Dij_pair);
+    int *D_pair_v = (int*) malloc(sizeof(int) * n_Dij_pair);
+    ASSERT_PRINTF(
+        D_pair_i != NULL && D_pair_j != NULL && D_pair_v != NULL,
+        "Failed to allocate working buffer for D matrices indexing\n"
+    );
     
     // 2. Partition D matrices into multiple blocks s.t. each block has approximately
     //    the same total size of D matrices in a block
@@ -1265,12 +1318,17 @@ void H2ERI_build_D(H2ERI_p h2eri)
         D_ncol[i] = node_nbfp;
         D_ptr[i + 1] = Di_size;
         D0_total_size += Di_size;
+        D_pair_i[D_pair_cnt] = node;
+        D_pair_j[D_pair_cnt] = node;
+        D_pair_v[D_pair_cnt] = i + 1;
+        D_pair_cnt++;
     }
     int BD_ntask_thread = (BD_JIT == 1) ? BD_NTASK_THREAD : 1;
     H2P_partition_workload(n_leaf_node, D_ptr + 1, D0_total_size, n_thread * BD_ntask_thread, D_blk0);
     size_t D1_total_size = 0;
     for (int i = 0; i < n_r_inadm_pair; i++)
     {
+        int ii = i + n_leaf_node;
         int node0 = r_inadm_pairs[2 * i];
         int node1 = r_inadm_pairs[2 * i + 1];
         int pt_s0 = pt_cluster[2 * node0];
@@ -1284,9 +1342,32 @@ void H2ERI_build_D(H2ERI_p h2eri)
         D_ncol[i + n_leaf_node] = node1_nbfp;
         D_ptr[n_leaf_node + 1 + i] = Di_size;
         D1_total_size += Di_size;
+        D_pair_i[D_pair_cnt] = node0;
+        D_pair_j[D_pair_cnt] = node1;
+        D_pair_v[D_pair_cnt] = ii + 1;
+        D_pair_cnt++;
+        D_pair_i[D_pair_cnt] = node1;
+        D_pair_j[D_pair_cnt] = node0;
+        D_pair_v[D_pair_cnt] = -(ii + 1);
+        D_pair_cnt++;
     }
     H2P_partition_workload(n_r_inadm_pair, D_ptr + n_leaf_node + 1, D1_total_size, n_thread * BD_ntask_thread, D_blk1);
     for (int i = 1; i <= n_leaf_node + n_r_inadm_pair; i++) D_ptr[i] += D_ptr[i - 1];
+
+    // 2.1 Store pair-to-index relations in a CSR matrix for matvec, matmul, and SPDHSS construction
+    h2pack->D_p2i_rowptr = (int*) malloc(sizeof(int) * (n_node + 1));
+    h2pack->D_p2i_colidx = (int*) malloc(sizeof(int) * n_Dij_pair);
+    h2pack->D_p2i_val    = (int*) malloc(sizeof(int) * n_Dij_pair);
+    ASSERT_PRINTF(h2pack->D_p2i_rowptr != NULL, "Failed to allocate arrays for D matrices indexing\n");
+    ASSERT_PRINTF(h2pack->D_p2i_colidx != NULL, "Failed to allocate arrays for D matrices indexing\n");
+    ASSERT_PRINTF(h2pack->D_p2i_val    != NULL, "Failed to allocate arrays for D matrices indexing\n");
+    H2P_int_COO_to_CSR(
+        n_node, D_pair_cnt, D_pair_i, D_pair_j, D_pair_v, 
+        h2pack->D_p2i_rowptr, h2pack->D_p2i_colidx, h2pack->D_p2i_val
+    );
+    free(D_pair_i);
+    free(D_pair_j);
+    free(D_pair_v);
     
     if (BD_JIT == 1) return;
     

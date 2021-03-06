@@ -7,6 +7,8 @@
 #include "CMS.h"
 #include "H2ERI_typedef.h"
 #include "H2Pack_partition.h"
+#include "H2Pack_utils.h"
+#include "H2ERI_build_exchange.h"
 
 // Partition screened shell pair centers (as points) for H2 tree
 // Input parameters:
@@ -81,8 +83,8 @@ void H2ERI_partition_sp_centers(H2ERI_p h2eri, int max_leaf_points, double max_l
     
     // 3. Initialize shell pairs. Note that Simint MATLAB code uses (NM|QP) instead
     // of the normal (MN|PQ) order for ERI. We follow this for the moment.
-    h2eri->sp    = (multi_sp_t *) malloc(sizeof(multi_sp_t) * num_sp);
-    h2eri->index_seq = (int *)        malloc(sizeof(int)        * num_sp);
+    h2eri->sp = (multi_sp_t *) malloc(sizeof(multi_sp_t) * num_sp);
+    h2eri->index_seq = (int *) malloc(sizeof(int) * num_sp);
     assert(h2eri->sp != NULL && h2eri->index_seq != NULL);
     for (int i = 0; i < num_sp; i++)
     {
@@ -124,6 +126,7 @@ void H2ERI_calc_bf_bfp_info(H2ERI_p h2eri)
         h2eri->max_am = MAX(h2eri->max_am, am);
     }
     h2eri->num_bf = h2eri->shell_bf_sidx[nshell];
+    h2eri->max_shell_nbf = NCART(h2eri->max_am);
     
     h2eri->sp_bfp_sidx[0] = 0;
     for (int i = 0; i < num_sp; i++)
@@ -265,6 +268,171 @@ void H2ERI_calc_mat_cluster(H2ERI_p h2eri)
     }
 }
 
+// Find each node's admissible and inadmissible pair nodes
+// Input parameter:
+//   h2eri->h2pack : H2 tree partitioning info
+// Output parameters:
+//   h2eri->node_adm_pairs        : Array, size unknown, each node's admissible node pairs
+//   h2eri->node_adm_pairs_sidx   : Array, size h2pack->n_node+1, index of each node's first admissible node pair
+//   h2eri->node_inadm_pairs      : Array, size unknown, each node's inadmissible node pairs
+//   h2eri->node_inadm_pairs_sidx : Array, size h2pack->n_node+1, index of each node's first inadmissible node pair
+void H2ERI_calc_node_adm_inadm_pairs(H2ERI_p h2eri)
+{
+    H2Pack_p h2pack = h2eri->h2pack;
+    int n_node         = h2pack->n_node;
+    int n_node1        = h2pack->n_node + 1;
+    int n_leaf_node    = h2pack->n_leaf_node;
+    int n_r_adm_pair   = h2pack->n_r_adm_pair;
+    int n_r_inadm_pair = h2pack->n_r_inadm_pair;
+    int n_adm_pair     = 2 * n_r_adm_pair;
+    int n_inadm_pair   = 2 * n_r_inadm_pair + n_leaf_node;
+    int *r_adm_pairs   = h2pack->r_adm_pairs;
+    int *r_inadm_pairs = h2pack->r_inadm_pairs;
+    int *leaf_nodes    = h2pack->height_nodes;
+    int *node_adm_pairs_sidx   = (int *) malloc(sizeof(int) * n_node1);
+    int *node_inadm_pairs_sidx = (int *) malloc(sizeof(int) * n_node1);
+    int *node_adm_pairs        = (int *) malloc(sizeof(int) * n_adm_pair);
+    int *node_inadm_pairs      = (int *) malloc(sizeof(int) * n_inadm_pair);
+    ASSERT_PRINTF(node_adm_pairs_sidx   != NULL, "Failed to allocate node_adm_pairs_sidx   of size %d\n", n_node1);
+    ASSERT_PRINTF(node_inadm_pairs_sidx != NULL, "Failed to allocate node_inadm_pairs_sidx of size %d\n", n_node1);
+    ASSERT_PRINTF(node_adm_pairs        != NULL, "Failed to allocate node_adm_pairs        of size %d\n", n_adm_pair);
+    ASSERT_PRINTF(node_inadm_pairs      != NULL, "Failed to allocate node_inadm_pairs      of size %d\n", n_inadm_pair);
+    
+    memset(node_adm_pairs_sidx, 0, sizeof(int) * n_node1);
+    for (int i = 0; i < n_r_adm_pair; i++)
+    {
+        int node0 = r_adm_pairs[2 * i];
+        int node1 = r_adm_pairs[2 * i + 1];
+        node_adm_pairs_sidx[node0 + 1]++;
+        node_adm_pairs_sidx[node1 + 1]++;
+    }
+    for (int i = 2; i <= n_node; i++)
+        node_adm_pairs_sidx[i] += node_adm_pairs_sidx[i - 1];
+    for (int i = 0; i < n_r_adm_pair; i++)
+    {
+        int node0 = r_adm_pairs[2 * i];
+        int node1 = r_adm_pairs[2 * i + 1];
+        int idx0  = node_adm_pairs_sidx[node0];
+        int idx1  = node_adm_pairs_sidx[node1];
+        node_adm_pairs[idx0] = node1;
+        node_adm_pairs[idx1] = node0;
+        node_adm_pairs_sidx[node0]++;
+        node_adm_pairs_sidx[node1]++;
+    }
+    for (int i = n_node; i >= 1; i--)
+        node_adm_pairs_sidx[i] = node_adm_pairs_sidx[i - 1];
+    node_adm_pairs_sidx[0] = 0;
+
+    memset(node_inadm_pairs_sidx, 0, sizeof(int) * n_node1);
+    for (int i = 0; i < n_leaf_node; i++)
+    {
+        int node0 = leaf_nodes[i];
+        node_inadm_pairs_sidx[node0 + 1]++;
+    }
+    for (int i = 0; i < n_r_inadm_pair; i++)
+    {
+        int node0 = r_inadm_pairs[2 * i];
+        int node1 = r_inadm_pairs[2 * i + 1];
+        node_inadm_pairs_sidx[node0 + 1]++;
+        node_inadm_pairs_sidx[node1 + 1]++;
+    }
+    for (int i = 2; i <= n_node; i++)
+        node_inadm_pairs_sidx[i] += node_inadm_pairs_sidx[i - 1];
+    for (int i = 0; i < n_leaf_node; i++)
+    {
+        int node0 = leaf_nodes[i];
+        int idx0  = node_inadm_pairs_sidx[node0];
+        node_inadm_pairs[idx0] = node0;
+        node_inadm_pairs_sidx[node0]++;
+    }
+    for (int i = 0; i < n_r_inadm_pair; i++)
+    {
+        int node0 = r_inadm_pairs[2 * i];
+        int node1 = r_inadm_pairs[2 * i + 1];
+        int idx0  = node_inadm_pairs_sidx[node0];
+        int idx1  = node_inadm_pairs_sidx[node1];
+        node_inadm_pairs[idx0] = node1;
+        node_inadm_pairs[idx1] = node0;
+        node_inadm_pairs_sidx[node0]++;
+        node_inadm_pairs_sidx[node1]++;
+    }
+    for (int i = n_node; i >= 1; i--)
+        node_inadm_pairs_sidx[i] = node_inadm_pairs_sidx[i - 1];
+    node_inadm_pairs_sidx[0] = 0;
+
+    h2eri->node_adm_pairs_sidx   = node_adm_pairs_sidx;
+    h2eri->node_inadm_pairs_sidx = node_inadm_pairs_sidx;
+    h2eri->node_adm_pairs        = node_adm_pairs;
+    h2eri->node_inadm_pairs      = node_inadm_pairs;
+}
+
+// Calculate plist, plist_idx, plist_sidx for exchange matrix construction 
+// Input parameters:
+//   h2eri->nshell       : Number of shells
+//   h2eri->num_sp       : Number of screened shell pairs (SSP)
+//   h2eri->sp_shell_idx : Array, size 2 * num_sp, each row is the contracted shell indices of a SSP
+// Output parameters:
+//   h2eri->plist      : Array, size unknown, each shell's screened pair shells
+//   h2eri->plist_idx  : Array, size unknown, corresponding indices of each shell's screened pair shells in sp_bfp_sidx
+//   h2eri->plist_sidx : Array, size nshell+1, index of each node's first item in plist & plist_idx
+void H2ERI_build_plist(H2ERI_p h2eri)
+{
+    int nshell        = h2eri->nshell;
+    int nshell1       = nshell + 1;
+    int num_sp        = h2eri->num_sp;
+    int *sp_shell_idx = h2eri->sp_shell_idx;
+
+    int *plist      = (int *) malloc(sizeof(int) * 2 * num_sp);
+    int *plist_idx  = (int *) malloc(sizeof(int) * 2 * num_sp);
+    int *plist_sidx = (int *) malloc(sizeof(int) * nshell1);
+    ASSERT_PRINTF(plist      != NULL, "Failed to allocate plist      of size %d\n", 2 * num_sp);
+    ASSERT_PRINTF(plist_idx  != NULL, "Failed to allocate plist_idx  of size %d\n", 2 * num_sp);
+    ASSERT_PRINTF(plist_sidx != NULL, "Failed to allocate plist_sidx of size %d\n", nshell1);
+    memset(plist_sidx, 0, sizeof(int) * nshell1);
+    for (int i = 0; i < num_sp; i++)
+    {
+        int i20 = i, i21 = i + num_sp;
+        int shell0 = sp_shell_idx[i20];
+        int shell1 = sp_shell_idx[i21];
+        plist_sidx[shell0 + 1]++;
+        if (shell0 != shell1) plist_sidx[shell1 + 1]++;
+    }
+    for (int i = 2; i <= nshell; i++)
+        plist_sidx[i] += plist_sidx[i - 1];
+    for (int i = 0; i < num_sp; i++)
+    {
+        int i20 = i, i21 = i + num_sp;
+        int shell0 = sp_shell_idx[i20];
+        int shell1 = sp_shell_idx[i21];
+        int idx0 = plist_sidx[shell0];
+        plist[idx0] = shell1;
+        plist_idx[idx0] = i;
+        plist_sidx[shell0]++;
+        if (shell0 != shell1)
+        {
+            int idx1 = plist_sidx[shell1];
+            plist[idx1] = shell0;
+            plist_idx[idx1] = i;
+            plist_sidx[shell1]++;
+        }
+    }
+    for (int i = nshell; i >= 1; i--)
+        plist_sidx[i] = plist_sidx[i - 1];
+    plist_sidx[0] = 0;
+
+    #pragma omp parallel for schedule(dynamic)
+    for (int i = 0; i < nshell; i++)
+    {
+        int sidx = plist_sidx[i];
+        int len  = plist_sidx[i + 1] - sidx;
+        H2P_qsort_int_key_val(plist + sidx, plist_idx + sidx, 0, len - 1);
+    }
+
+    h2eri->plist      = plist;
+    h2eri->plist_idx  = plist_idx;
+    h2eri->plist_sidx = plist_sidx;
+}
+
 // H2 partition of screened shell pair centers
 void H2ERI_partition(H2ERI_p h2eri)
 {
@@ -272,6 +440,9 @@ void H2ERI_partition(H2ERI_p h2eri)
     H2ERI_calc_bf_bfp_info(h2eri);
     H2ERI_calc_box_extent (h2eri);
     H2ERI_calc_mat_cluster(h2eri);
+    H2ERI_calc_node_adm_inadm_pairs(h2eri);
+    H2ERI_build_plist(h2eri);
+    H2ERI_exchange_workbuf_init(h2eri);
     
     // Initialize thread local Simint buffer
     int n_thread = h2eri->h2pack->n_thread;

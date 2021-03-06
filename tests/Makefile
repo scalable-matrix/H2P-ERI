@@ -45,7 +45,7 @@ INCS    += -I$(LIBXC_INSTALL_DIR)/include
 LDFLAGS += -L$(LIBXC_INSTALL_DIR)/lib -lxc
 endif
 
-SRCS = H2ERI-HF.c H2ERI-DFT.c test_SCF_lastD.c test_input_mat.c test_perf.c
+SRCS = H2ERI-HF-J.c H2ERI-HF-JK.c H2ERI-DFT-J.c H2ERI-DFT-JK.c test_SCF_lastD.c test_J_input_mat.c test_K_input_mat.c test_perf.c
 OBJS = $(SRCS:.c=.o)
 EXES = $(OBJS:.o=.exe)
 

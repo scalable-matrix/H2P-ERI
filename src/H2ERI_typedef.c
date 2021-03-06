@@ -6,40 +6,52 @@
 #include "CMS.h"
 #include "H2Pack_typedef.h"
 #include "H2ERI_typedef.h"
+#include "H2ERI_build_exchange.h"
 
 // Initialize a H2ERI structure
 void H2ERI_init(H2ERI_p *h2eri_, const double scr_tol, const double ext_tol, const double QR_tol)
 {
     H2ERI_p h2eri = (H2ERI_p) malloc(sizeof(struct H2ERI));
     assert(h2eri != NULL);
+    memset(h2eri, 0, sizeof(struct H2ERI));
     
     h2eri->max_am  = 0;
     h2eri->scr_tol = scr_tol;
     h2eri->ext_tol = ext_tol;
     
-    h2eri->pp_npts_layer   = 384;
-    h2eri->pp_nlayer_ext   = 3;
+    h2eri->pp_npts_layer = 384;
+    h2eri->pp_nlayer_ext = 3;
     
-    h2eri->shell_bf_sidx   = NULL;
-    h2eri->sp_nbfp         = NULL;
-    h2eri->sp_bfp_sidx     = NULL;
-    h2eri->sp_shell_idx    = NULL;
-    h2eri->index_seq       = NULL;
-    h2eri->sp_center       = NULL;
-    h2eri->sp_extent       = NULL;
-    h2eri->box_extent      = NULL;
-    h2eri->unc_denmat_x    = NULL;
-    h2eri->H2_matvec_y     = NULL;
-    h2eri->shells          = NULL;
-    h2eri->sp_shells       = NULL;
-    h2eri->sp              = NULL;
-    h2eri->J_pair          = NULL;
-    h2eri->J_row           = NULL;
-    h2eri->ovlp_ff_idx     = NULL;
-    h2eri->simint_buffs    = NULL;
-    h2eri->eri_batch_buffs = NULL;
-    h2eri->c_B_blks        = NULL;
-    h2eri->c_D_blks        = NULL;
+    h2eri->shell_bf_sidx         = NULL;
+    h2eri->sp_nbfp               = NULL;
+    h2eri->sp_bfp_sidx           = NULL;
+    h2eri->sp_shell_idx          = NULL;
+    h2eri->index_seq             = NULL;
+    h2eri->node_adm_pairs        = NULL;
+    h2eri->node_adm_pairs_sidx   = NULL;
+    h2eri->node_inadm_pairs      = NULL;
+    h2eri->node_inadm_pairs_sidx = NULL;
+    h2eri->plist                 = NULL;
+    h2eri->plist_idx             = NULL;
+    h2eri->plist_sidx            = NULL;
+    h2eri->dlist                 = NULL;
+    h2eri->dlist_sidx            = NULL;
+    h2eri->thread_Kmat_workbuf   = NULL;
+    h2eri->sp_center             = NULL;
+    h2eri->sp_extent             = NULL;
+    h2eri->box_extent            = NULL;
+    h2eri->unc_denmat_x          = NULL;
+    h2eri->H2_matvec_y           = NULL;
+    h2eri->shells                = NULL;
+    h2eri->sp_shells             = NULL;
+    h2eri->sp                    = NULL;
+    h2eri->J_pair                = NULL;
+    h2eri->J_row                 = NULL;
+    h2eri->ovlp_ff_idx           = NULL;
+    h2eri->simint_buffs          = NULL;
+    h2eri->eri_batch_buffs       = NULL;
+    h2eri->c_B_blks              = NULL;
+    h2eri->c_D_blks              = NULL;
     
     double _QR_tol = QR_tol;
     H2P_init(&h2eri->h2pack, 3, 1, QR_REL_NRM, &_QR_tol);
@@ -55,6 +67,16 @@ void H2ERI_destroy(H2ERI_p h2eri)
     free(h2eri->sp_bfp_sidx);
     free(h2eri->sp_shell_idx);
     free(h2eri->index_seq);
+    free(h2eri->node_adm_pairs);
+    free(h2eri->node_adm_pairs_sidx);
+    free(h2eri->node_inadm_pairs);
+    free(h2eri->node_inadm_pairs_sidx);
+    free(h2eri->plist);
+    free(h2eri->plist_idx);
+    free(h2eri->plist_sidx);
+    free(h2eri->dlist);
+    free(h2eri->dlist_sidx);
+    H2ERI_exchange_workbuf_free(h2eri);
     free(h2eri->sp_center);
     free(h2eri->sp_extent);
     free(h2eri->box_extent);

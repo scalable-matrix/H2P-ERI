@@ -5,6 +5,7 @@
 #include <math.h>
 
 #include "H2ERI_typedef.h"
+#include "H2ERI_shell_operations.h"
 
 // Schwarz screening for shell pairs
 // Input parameters:
@@ -52,6 +53,8 @@ void H2ERI_screen_shell_pairs(H2ERI_p h2eri)
         for (int j = i; j < nshell; j++)
         {
             if (src_vals_row[j] < scr_thres) continue;
+            #if 0
+            // No longer work for K matrix build
             // Later we will calculate (NM|QP) instead of (MN|PQ), so we want AM(M) < AM(N)
             if (shells[i].am < shells[j].am)
             {
@@ -69,6 +72,14 @@ void H2ERI_screen_shell_pairs(H2ERI_p h2eri)
                 sp_shell_idx[cidx1] = i;
                 sp_shell_idx[cidx0] = j;
             }
+            #else
+            simint_allocate_shell(shells[i].nprim, &sp_shells[cidx0]);
+            simint_allocate_shell(shells[j].nprim, &sp_shells[cidx1]);
+            simint_copy_shell(&shells[i], &sp_shells[cidx0]);
+            simint_copy_shell(&shells[j], &sp_shells[cidx1]);
+            sp_shell_idx[cidx0] = i;
+            sp_shell_idx[cidx1] = j;
+            #endif
             cidx0++;
             cidx1++;
         }
