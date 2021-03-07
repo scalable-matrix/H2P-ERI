@@ -19,6 +19,7 @@ void H2ERI_HFSCF(TinyDFT_p TinyDFT, H2ERI_p h2eri, const int max_iter)
     double E_prev, E_curr, E_delta = 19241112.0;
     
     int    mat_size       = TinyDFT->mat_size;
+    int    num_occ        = TinyDFT->n_occ;
     double *D_mat         = TinyDFT->D_mat;
     double *J_mat         = TinyDFT->J_mat;
     double *K_mat         = TinyDFT->K_mat;
@@ -32,6 +33,8 @@ void H2ERI_HFSCF(TinyDFT_p TinyDFT, H2ERI_p h2eri, const int max_iter)
     double *E_two_elec    = &TinyDFT->E_two_elec;
     double *E_HF_exchange = &TinyDFT->E_HF_exchange;
 
+    TinyDFT_build_Cocc_from_Dmat(TinyDFT, D_mat, Cocc_mat);
+
     while ((TinyDFT->iter < TinyDFT->max_iter) && (fabs(E_delta) >= TinyDFT->E_tol))
     {
         printf("--------------- Iteration %d ---------------\n", TinyDFT->iter);
@@ -41,14 +44,14 @@ void H2ERI_HFSCF(TinyDFT_p TinyDFT, H2ERI_p h2eri, const int max_iter)
         
         // Build the Fock matrix
         st1 = get_wtime_sec();
-        TinyDFT_build_JKmat(TinyDFT, D_mat, NULL, K_mat);
-        st2 = get_wtime_sec();
         H2ERI_build_Coulomb(h2eri, D_mat, J_mat);
+        st2 = get_wtime_sec();
+        H2ERI_build_ACE(h2eri, num_occ, Cocc_mat, K_mat);
         #pragma omp parallel for simd
         for (int i = 0; i < mat_size; i++)
             F_mat[i] = Hcore_mat[i] + 2 * J_mat[i] - K_mat[i];
         et1 = get_wtime_sec();
-        printf("* Build Fock matrix     : %.3lf (s), H2ERI J mat used %.3lf (s)\n", et1 - st1, et1 - st2);
+        printf("* Build Fock matrix     : %.3lf (s), H2ERI J / K mat used %.3lf, %.3lf (s)\n", et1 - st1, st2 - st1, et1 - st2);
         
         // Calculate new system energy
         st1 = get_wtime_sec();
@@ -100,7 +103,7 @@ int main(int argc, char **argv)
         return 255;
     }
     
-    printf("INFO: use H2ERI J (relerr %.2e), HF exchange K\n", atof(argv[4]));
+    printf("INFO: use H2ERI J & K (relerr %.2e)\n", atof(argv[4]));
 
     // Initialize TinyDFT
     TinyDFT_p TinyDFT;

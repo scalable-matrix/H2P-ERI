@@ -23,6 +23,7 @@ struct H2ERI
     int    num_sp_bfp;                  // Number of SSP basis function pairs, == sp_bfp_sidx[num_sp]
     int    pp_npts_layer;               // Number of proxy points on each layer
     int    pp_nlayer_ext;               // Number of proxy point layers on each extent
+    size_t ACE_workbuf_size;            // Size of ACE_workbuf
     int    *shell_bf_sidx;              // Array, size nshell, indices of each shell's first basis function
     int    *sp_nbfp;                    // Array, size num_sp, number of basis function pairs of each SSP
     int    *sp_bfp_sidx;                // Array, size num_sp+1, indices of each SSP's first basis function pair
@@ -45,6 +46,7 @@ struct H2ERI
     double *box_extent;                 // Array, size h2pack->n_node, extents of each H2 node box
     double *unc_denmat_x;               // Array, size num_sp_bfp, uncontracted density matrix as a vector
     double *H2_matvec_y;                // Array, size num_sp_bfp, H2 matvec result 
+    double *ACE_workbuf;                // Array, size ACE_workbuf_size;
     shell_t          *shells;           // Array, size nshell, contracted shells
     shell_t          *sp_shells;        // Array, size 2 * num_sp, each column is a SSP
     multi_sp_t       *sp;               // Array, size num_sp, SSP

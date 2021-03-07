@@ -25,4 +25,7 @@
 // H2ERI exchange matrix construction
 #include "H2ERI_build_exchange.h"
 
+// H2ERI Adaptive Compressed Exchange (ACE) matrix construction
+#include "H2ERI_build_ACE.h"
+
 #endif

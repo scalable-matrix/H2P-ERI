@@ -21,7 +21,8 @@ void H2ERI_init(H2ERI_p *h2eri_, const double scr_tol, const double ext_tol, con
     
     h2eri->pp_npts_layer = 384;
     h2eri->pp_nlayer_ext = 3;
-    
+
+    h2eri->ACE_workbuf_size      = 0;
     h2eri->shell_bf_sidx         = NULL;
     h2eri->sp_nbfp               = NULL;
     h2eri->sp_bfp_sidx           = NULL;
@@ -42,6 +43,7 @@ void H2ERI_init(H2ERI_p *h2eri_, const double scr_tol, const double ext_tol, con
     h2eri->box_extent            = NULL;
     h2eri->unc_denmat_x          = NULL;
     h2eri->H2_matvec_y           = NULL;
+    h2eri->ACE_workbuf           = NULL;
     h2eri->shells                = NULL;
     h2eri->sp_shells             = NULL;
     h2eri->sp                    = NULL;
@@ -82,6 +84,7 @@ void H2ERI_destroy(H2ERI_p h2eri)
     free(h2eri->box_extent);
     free(h2eri->unc_denmat_x);
     free(h2eri->H2_matvec_y);
+    free(h2eri->ACE_workbuf);
     CMS_destroy_shells(h2eri->nshell, h2eri->shells);
     CMS_destroy_shells(h2eri->num_sp * 2, h2eri->sp_shells);
     CMS_destroy_shell_pairs(h2eri->num_sp, h2eri->sp);
