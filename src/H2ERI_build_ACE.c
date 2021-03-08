@@ -10,7 +10,7 @@
 #include "H2ERI_typedef.h"
 #include "H2ERI_build_ACE.h"
 #include "H2ERI_utils.h"
-#include "H2ERI_matvec.h"
+#include "H2ERI_matmul.h"
 #include "utils.h"  // In H2Pack
 
 // Build the Adaptive Compressed Exchange (ACE) matrix with the Cocc matrix
@@ -123,7 +123,7 @@ void H2ERI_build_ACE(H2ERI_p h2eri, const int num_occ, const double *Cocc_mat, d
         {
             int j_end = j_start + max_nvec;
             if (j_end > num_occ) j_end = num_occ;
-            int nvec = j_end - j_start;
+            int n_vec = j_end - j_start;
 
             // 4.1 Prepare multiplicand V^{i, j}_{P, Q} = C_{P, j} * C_{Q, i}
             //     Due to symmetry of shell pairs, here we actually prepare 
@@ -161,14 +161,7 @@ void H2ERI_build_ACE(H2ERI_p h2eri, const int num_occ, const double *Cocc_mat, d
 
             // 4.2 Multiplication W^{i, j}_{M, N} = (M, N|P, Q) V^{i, j}_{P, Q}
             st = get_wtime_sec();
-            // TODO: implement H2ERI_matmul and use it
-            for (int j = j_start; j < j_end; j++)
-            {
-                int idx = j - j_start;
-                double *V_j = V_mat + idx * num_sp_bfp;
-                double *W_j = W_mat + idx * num_sp_bfp;
-                H2ERI_matvec(h2eri, V_j, W_j);
-            }
+            H2ERI_matmul(h2eri, n_vec, V_mat, num_sp_bfp, W_mat, num_sp_bfp);
             et = get_wtime_sec();
             matmul_t += et - st;
 
@@ -209,7 +202,7 @@ void H2ERI_build_ACE(H2ERI_p h2eri, const int num_occ, const double *Cocc_mat, d
                         int idx_l_s = l * M_nbf;
                         int idx_l_e = (l + 1) * M_nbf;
                         double tmp1_l = 0.0;
-                        for (int k = 0; k < nvec; k++)
+                        for (int k = 0; k < n_vec; k++)
                         {
                             // tmp0    = tmp0    + W_M_N(idx_l, k) .* C_N_j(l, k);
                             // tmp1(l) = tmp1(l) + dot(W_M_N(idx_l, k), C_M_j(:, k));
