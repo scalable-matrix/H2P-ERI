@@ -1099,6 +1099,11 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
         }
         if ((cnt > 0) && (level0 < bwd_minlvl)) bwd_minlvl = level0;
     }
+    if (fwd_minlvl < h2pack->min_adm_level) fwd_minlvl = h2pack->min_adm_level;
+    if (bwd_minlvl < h2pack->min_adm_level) bwd_minlvl = h2pack->min_adm_level;
+    int only_Dij = 0;
+    if (col_max_level < fwd_minlvl) only_Dij = 1;
+    if (row_max_level < bwd_minlvl) only_Dij = 1;
     et = get_wtime_sec();
     timers[BUILD_K_MM_FWD_TIMER_IDX] += et - st;
 
@@ -1106,6 +1111,7 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
     st = get_wtime_sec();
     for (int i = col_max_level; i >= fwd_minlvl; i--)
     {
+        if (only_Dij) continue;
         int *level_i_nodes = level_nodes + i * n_leaf_node;
         int level_i_n_node = level_n_node[i];
         for (int j = 0; j < level_i_n_node; j++)
@@ -1161,6 +1167,7 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
     st = get_wtime_sec();
     for (int node0 = 0; node0 < n_node; node0++)
     {
+        if (only_Dij) continue;
         if (row_node_flag[node0] == 0) continue;
         
         int node0_n_adm_pair = node_adm_pairs_sidx[node0 + 1] - node_adm_pairs_sidx[node0];
@@ -1249,6 +1256,7 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
     st = get_wtime_sec();
     for (int i = bwd_minlvl; i <= row_max_level; i++)
     {
+        if (only_Dij) continue;
         int *level_i_nodes = level_nodes + i * n_leaf_node;
         int level_i_n_node = level_n_node[i];
         for (int j = 0; j < level_i_n_node; j++)
