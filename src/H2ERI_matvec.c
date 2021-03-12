@@ -9,17 +9,8 @@
 #include "H2Pack_utils.h"
 #include "H2ERI_typedef.h"
 #include "H2ERI_matvec.h"
+#include "H2ERI_utils.h"
 #include "utils.h"  // In H2Pack
-
-// These two external functions are in H2Pack_matvec.c, but not exposed in H2Pack_utils.h
-extern void CBLAS_BI_GEMV(
-    const int nrow, const int ncol, const double *mat, const int ldm,
-    const double *x_in_0, const double *x_in_1, double *x_out_0, double *x_out_1
-);
-extern void H2P_matvec_sum_y1_thread(H2Pack_p h2pack);
-
-// This external function is in H2ERI_build_H2.c, but not exposed in H2ERI_build_H2.h
-extern int H2ERI_gather_sum(const int *arr, H2P_int_vec_p idx);
 
 // Perform bi-matvec for a B or D block blk which might be 
 // a dense block or a low-rank approximation blk = U * V.
@@ -242,8 +233,8 @@ void H2ERI_matvec_intmd_mult_JIT(H2ERI_p h2eri, const double *x)
                 // (1) Two nodes are of the same level, compress on both sides
                 if (level0 == level1)
                 {
-                    int tmpB_nrow  = H2ERI_gather_sum(sp_nbfp, J_pair[node0]);
-                    int tmpB_ncol  = H2ERI_gather_sum(sp_nbfp, J_pair[node1]);
+                    int tmpB_nrow  = H2ERI_gather_sum_int(sp_nbfp, J_pair[node0]->length, J_pair[node0]->data);
+                    int tmpB_ncol  = H2ERI_gather_sum_int(sp_nbfp, J_pair[node1]->length, J_pair[node1]->data);
                     int n_bra_pair = J_pair[node0]->length;
                     int n_ket_pair = J_pair[node1]->length;
                     int *bra_idx   = J_pair[node0]->data;
@@ -270,7 +261,7 @@ void H2ERI_matvec_intmd_mult_JIT(H2ERI_p h2eri, const double *x)
                 //     only compress on node0's side
                 if (level0 > level1)
                 {
-                    int tmpB_nrow  = H2ERI_gather_sum(sp_nbfp, J_pair[node0]);
+                    int tmpB_nrow  = H2ERI_gather_sum_int(sp_nbfp, J_pair[node0]->length, J_pair[node0]->data);
                     int tmpB_ncol  = B_ncol[i];
                     int pt_s1      = pt_cluster[2 * node1];
                     int pt_e1      = pt_cluster[2 * node1 + 1];
@@ -301,7 +292,7 @@ void H2ERI_matvec_intmd_mult_JIT(H2ERI_p h2eri, const double *x)
                 if (level0 < level1)
                 {
                     int tmpB_nrow  = B_nrow[i];
-                    int tmpB_ncol  = H2ERI_gather_sum(sp_nbfp, J_pair[node1]);
+                    int tmpB_ncol  = H2ERI_gather_sum_int(sp_nbfp, J_pair[node1]->length, J_pair[node1]->data);
                     int pt_s0      = pt_cluster[2 * node0];
                     int pt_e0      = pt_cluster[2 * node0 + 1];
                     int n_bra_pair = pt_e0 - pt_s0 + 1;

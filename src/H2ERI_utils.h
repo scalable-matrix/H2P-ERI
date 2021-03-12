@@ -20,6 +20,13 @@ static inline void atomic_add_f64(volatile double *global_addr, double addend)
     } while (!__sync_bool_compare_and_swap((volatile uint64_t *) global_addr, expected_value, new_value));
 }
 
+static inline int H2ERI_gather_sum_int(const int *arr, const int nelem, const int *idx)
+{
+    int res = 0;
+    for (int i = 0; i < nelem; i++) res += arr[idx[i]];
+    return res;
+}
+
 #ifdef __cplusplus
 extern "C" {
 #endif

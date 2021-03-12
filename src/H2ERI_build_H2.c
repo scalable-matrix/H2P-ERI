@@ -11,6 +11,7 @@
 #include "H2Pack_utils.h"
 #include "H2Pack_aux_structs.h"
 #include "H2Pack_ID_compress.h"
+#include "H2ERI_utils.h"
 #include "linalg_lib_wrapper.h"  // In H2Pack
 
 // Partition the ring area (r1 < r < r2) using multiple layers of 
@@ -336,109 +337,6 @@ void H2ERI_extract_shell_pair_idx(
     row_idx_new->length = num_target;
 }
 
-// Gather and sum elements in an array
-// Input parameters:
-//   arr : Array
-//   idx : Indices of elements
-// Output parameter:
-//   <return> : Sum result
-int H2ERI_gather_sum(const int *arr, H2P_int_vec_p idx)
-{
-    int res = 0;
-    for (int i = 0; i < idx->length; i++) 
-        res += arr[idx->data[i]];
-    return res;
-}
-
-// Calculate y := x * A, where A is a random sparse matrix that has
-// RAND_NNZ_COL random nonzeros in each column with random position, 
-// x and y are row-major matrices.
-// Input parameters:
-//   k, n : A is k-by-n sparse matrix
-// Output parameters:
-//   A_valbuf : Buffer for storing nonzeros of A^T
-//   A_idxbuf : Buffer for storing nonzero indices of A^T
-void H2ERI_gen_rand_sparse_mat(const int k, const int n, H2P_dense_mat_p A_valbuf, H2P_int_vec_p A_idxbuf)
-{
-    // Note: we calculate y^T := A^T * x^T. Since x/y is row-major, 
-    // each of its row is a column of x^T/y^T. We can just use SpMV
-    // to calculate y^T(:, i) := A^T * x^T(:, i). 
-
-    int RAND_NNZ_COL = (16 <= k) ? 16 : k;
-    int nnz = n * RAND_NNZ_COL;
-    H2P_dense_mat_resize(A_valbuf, 1, nnz);
-    H2P_int_vec_set_capacity(A_idxbuf, (n + 1) + nnz + k);
-    double *val = A_valbuf->data;
-    int *row_ptr = A_idxbuf->data;
-    int *col_idx = row_ptr + (n + 1);
-    int *flag = col_idx + nnz; 
-    memset(flag, 0, sizeof(int) * k);
-    for (int i = 0; i < nnz; i++) 
-        val[i] = 2.0 * (rand() & 1) - 1.0;
-    for (int i = 0; i <= n; i++) 
-        row_ptr[i] = i * RAND_NNZ_COL;
-    for (int i = 0; i < n; i++)
-    {
-        int cnt = 0;
-        int *row_i_cols = col_idx + i * RAND_NNZ_COL;
-        while (cnt < RAND_NNZ_COL)
-        {
-            int col = rand() % k;
-            if (flag[col] == 0) 
-            {
-                flag[col] = 1;
-                row_i_cols[cnt] = col;
-                cnt++;
-            }
-        }
-        for (int j = 0; j < RAND_NNZ_COL; j++)
-            flag[row_i_cols[j]] = 0;
-    }
-}
-
-// Calculate y := x * A, where A is a random sparse matrix that has
-// RAND_NNZ_COL random nonzeros in each column with random position, 
-// x and y are row-major matrices.
-// Input parameters:
-//   m, n, k  : x is m-by-k matrix, A is k-by-n sparse matrix
-//   A_valbuf : Buffer for storing nonzeros of A
-//   A_idxbuf : Buffer for storing nonzero indices of A
-//   x, ldx   : m-by-k row-major dense matrix, leading dimension ldx
-//   ldy      : Leading dimension of y
-// Output parameters:
-//   y        : m-by-n row-major dense matrix, leading dimension ldy
-void H2ERI_calc_sparse_mm(
-    const int m, const int n, const int k,
-    H2P_dense_mat_p A_valbuf, H2P_int_vec_p A_idxbuf,
-    double *x, const int ldx, double *y, const int ldy
-)
-{
-    // Note: we calculate y^T := A^T * x^T. Since x/y is row-major, 
-    // each of its row is a column of x^T/y^T. We can just use SpMV
-    // to calculate y^T(:, i) := A^T * x^T(:, i). 
-
-    // Do m times CSR SpMV
-    int RAND_NNZ_COL = (16 <= k) ? 16 : k;
-    double *val = A_valbuf->data;
-    int *row_ptr = A_idxbuf->data;
-    int *col_idx = row_ptr + (n + 1);
-    for (int i = 0; i < m; i++)
-    {
-        double *x_i = x + i * ldx;
-        double *y_i = y + i * ldy;
-        
-        for (int j = 0; j < n; j++)
-        {
-            double res = 0.0;
-            int spos = RAND_NNZ_COL * j;
-            #pragma omp simd
-            for (int l = spos; l < spos + RAND_NNZ_COL; l++)
-                res += val[l] * x_i[col_idx[l]];
-            y_i[j] = res;
-        }
-    }
-}
-
 typedef enum
 {
     U_BUILD_ERI_TIMER_IDX = 0,
@@ -599,7 +497,7 @@ void H2ERI_build_UJ_proxy(H2ERI_p h2eri)
                     memcpy(pair_idx->data, index_seq + pt_s, sizeof(int) * node_npts);
                     pair_idx->length = node_npts;
                     
-                    int nbfp = H2ERI_gather_sum(sp_nbfp, pair_idx);
+                    int nbfp = H2ERI_gather_sum_int(sp_nbfp, pair_idx->length, pair_idx->data);
                     H2P_int_vec_set_capacity(row_idx, nbfp);
                     for (int k = 0; k < nbfp; k++) row_idx->data[k] = k;
                     row_idx->length = nbfp;
@@ -616,7 +514,7 @@ void H2ERI_build_UJ_proxy(H2ERI_p h2eri)
                         H2P_int_vec_concatenate(row_idx, J_row[child_k]);
                         for (int l = row_idx_spos; l < row_idx_epos; l++)
                             row_idx->data[l] += row_idx_offset;
-                        row_idx_offset += H2ERI_gather_sum(sp_nbfp, J_pair[child_k]);
+                        row_idx_offset += H2ERI_gather_sum_int(sp_nbfp, J_pair[child_k]->length, J_pair[child_k]->data);
                     }
                 }  // End of "if (node_n_child == 0)"
                 
@@ -651,7 +549,7 @@ void H2ERI_build_UJ_proxy(H2ERI_p h2eri)
                 //st = get_wtime_sec();
                 int n_ff_idx0 = ovlp_ff_idx[node]->length;
                 int *ff_idx0  = ovlp_ff_idx[node]->data;
-                int n_ff_idx  = H2ERI_gather_sum(skel_flag, ovlp_ff_idx[node]);
+                int n_ff_idx  = H2ERI_gather_sum_int(skel_flag, ovlp_ff_idx[node]->length, ovlp_ff_idx[node]->data);
                 H2P_int_vec_set_capacity(node_ff_idx, n_ff_idx);
                 n_ff_idx = 0;
                 for (int k = 0; k < n_ff_idx0; k++)
@@ -667,8 +565,8 @@ void H2ERI_build_UJ_proxy(H2ERI_p h2eri)
                 et = get_wtime_sec();
                 timers[U_BUILD_OTHER_TIMER_IDX] += et - st;
                 
-                int A_blk_nrow = H2ERI_gather_sum(sp_nbfp, pair_idx);
-                int A_ff_ncol  = H2ERI_gather_sum(sp_nbfp, node_ff_idx);
+                int A_blk_nrow = H2ERI_gather_sum_int(sp_nbfp, pair_idx->length, pair_idx->data);
+                int A_ff_ncol  = H2ERI_gather_sum_int(sp_nbfp, node_ff_idx->length, node_ff_idx->data);
                 int A_pp_ncol  = num_pp;
                 int A_blk_ncol = 2 * A_blk_nrow;
                 int max_nbfp   = NCART(5) * NCART(5);
@@ -678,9 +576,10 @@ void H2ERI_build_UJ_proxy(H2ERI_p h2eri)
 
                 // (4.1) Construct the random sparse matrix for NAI block normalization
                 st = get_wtime_sec();
-                H2ERI_gen_rand_sparse_mat(A_pp_ncol, A_blk_nrow, rndmatA_val, rndmatA_idx);
+                int max_nnz_col = 16;
+                H2P_gen_rand_sparse_mat_trans(max_nnz_col, A_pp_ncol, A_blk_nrow, rndmatA_val, rndmatA_idx);
                 // Find the union of all rndmatA_idx
-                int rand_nnz_col = (16 <= A_pp_ncol) ? 16 : A_pp_ncol;
+                int rand_nnz_col = (max_nnz_col <= A_pp_ncol) ? max_nnz_col : A_pp_ncol;
                 int rndmatA_nnz = A_blk_nrow * rand_nnz_col;
                 int *rndmatA_col = rndmatA_idx->data + (A_blk_nrow + 1);
                 H2P_int_vec_set_capacity(work_buf1, A_pp_ncol);
@@ -732,7 +631,7 @@ void H2ERI_build_UJ_proxy(H2ERI_p h2eri)
                 et = get_wtime_sec();
                 timers[U_BUILD_NAI_TIMER_IDX] += et - st;
                 st = get_wtime_sec();
-                H2ERI_calc_sparse_mm(
+                H2P_calc_sparse_mm_trans(
                     A_blk_nrow, A_blk_nrow, Aidx_cup_cnt,
                     rndmatA_val, rndmatA_idx, 
                     A_pp, Aidx_cup_cnt, A_blk_pp, A_blk_ncol
@@ -742,11 +641,11 @@ void H2ERI_build_UJ_proxy(H2ERI_p h2eri)
 
                 // (5.1) Construct the random sparse matrix for ERI block normalization
                 st = get_wtime_sec();
-                H2ERI_gen_rand_sparse_mat(A_ff_ncol, A_blk_nrow, rndmatA_val, rndmatA_idx);
+                H2P_gen_rand_sparse_mat_trans(max_nnz_col, A_ff_ncol, A_blk_nrow, rndmatA_val, rndmatA_idx);
                 // Find the union of all rndmatA_idx
                 // Note: the first (A_blk_nrow+1) elements in rndmatA_idx are row_ptr,
                 //       the rest RAND_NNZ_COL * A_blk_nrow elements are col
-                rand_nnz_col = (16 <= A_ff_ncol) ? 16 : A_ff_ncol;
+                rand_nnz_col = (max_nnz_col <= A_ff_ncol) ? max_nnz_col : A_ff_ncol;
                 rndmatA_nnz = A_blk_nrow * rand_nnz_col;
                 rndmatA_col = rndmatA_idx->data + (A_blk_nrow + 1);
                 H2P_int_vec_set_capacity(work_buf1, A_ff_ncol);
@@ -782,7 +681,7 @@ void H2ERI_build_UJ_proxy(H2ERI_p h2eri)
                     assert(nnz_idx != -1);
                     rndmatA_col[k] = rndmatA_idx1->data[nnz_idx];
                 }
-                int A_ff_ncol1 = H2ERI_gather_sum(sp_nbfp, node_ff_idx1);
+                int A_ff_ncol1 = H2ERI_gather_sum_int(sp_nbfp, node_ff_idx1->length, node_ff_idx1->data);
                 assert(A_ff_ncol1 >= rndmatA_idx_cup->length);
                 et = get_wtime_sec();
                 timers[U_BUILD_SPMM_TIMER_IDX] += et - st;
@@ -803,7 +702,7 @@ void H2ERI_build_UJ_proxy(H2ERI_p h2eri)
                     et = get_wtime_sec();
                     timers[U_BUILD_ERI_TIMER_IDX] += et - st;
                     st = get_wtime_sec();
-                    H2ERI_calc_sparse_mm(
+                    H2P_calc_sparse_mm_trans(
                         nbfp_k, A_blk_nrow, A_ff_ncol1,
                         rndmatA_val, rndmatA_idx, 
                         A_ff, A_ff_ncol1, A_blk_ff + nbfp_cnt * A_blk_ncol, A_blk_ncol
@@ -1161,8 +1060,8 @@ void H2ERI_build_B(H2ERI_p h2eri)
                 // (1) Two nodes are of the same level, compress on both sides
                 if (level0 == level1)
                 {
-                    int tmpB_nrow  = H2ERI_gather_sum(sp_nbfp, J_pair[node0]);
-                    int tmpB_ncol  = H2ERI_gather_sum(sp_nbfp, J_pair[node1]);
+                    int tmpB_nrow  = H2ERI_gather_sum_int(sp_nbfp, J_pair[node0]->length, J_pair[node0]->data);
+                    int tmpB_ncol  = H2ERI_gather_sum_int(sp_nbfp, J_pair[node1]->length, J_pair[node1]->data);
                     int n_bra_pair = J_pair[node0]->length;
                     int n_ket_pair = J_pair[node1]->length;
                     int *bra_idx   = J_pair[node0]->data;
@@ -1180,7 +1079,7 @@ void H2ERI_build_B(H2ERI_p h2eri)
                 //     only compress on node0's side
                 if (level0 > level1)
                 {
-                    int tmpB_nrow  = H2ERI_gather_sum(sp_nbfp, J_pair[node0]);
+                    int tmpB_nrow  = H2ERI_gather_sum_int(sp_nbfp, J_pair[node0]->length, J_pair[node0]->data);
                     int tmpB_ncol  = B_ncol[i];
                     int pt_s1      = pt_cluster[2 * node1];
                     int pt_e1      = pt_cluster[2 * node1 + 1];
@@ -1201,7 +1100,7 @@ void H2ERI_build_B(H2ERI_p h2eri)
                 if (level0 < level1)
                 {
                     int tmpB_nrow  = B_nrow[i];
-                    int tmpB_ncol  = H2ERI_gather_sum(sp_nbfp, J_pair[node1]);
+                    int tmpB_ncol  = H2ERI_gather_sum_int(sp_nbfp, J_pair[node1]->length, J_pair[node1]->data);
                     int pt_s0      = pt_cluster[2 * node0];
                     int pt_e0      = pt_cluster[2 * node0 + 1];
                     int n_bra_pair = pt_e0 - pt_s0 + 1;
