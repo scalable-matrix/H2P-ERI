@@ -4,13 +4,12 @@ LIB_SO  = libH2PERI.so
 C_SRCS  = $(wildcard *.c)
 C_OBJS  = $(C_SRCS:.c=.c.o)
 
-SIMINT_INSTALL_DIR   = /home/mkurisu/Workspace/simint/build-avx/install
-H2PACK_INSTALL_DIR   = /home/mkurisu/Workspace/H2Pack
-OPENBLAS_INSTALL_DIR = /home/mkurisu/Workspace/OpenBLAS-git/install
+SIMINT_INSTALL_DIR   = /home/keqing/workspace/simint-13May2021/build-icc20-avx/install
+OPENBLAS_INSTALL_DIR = /home/keqing/workspace/OpenBLAS-git/install
 
 DEFS    = 
-INCS    = -I$(SIMINT_INSTALL_DIR)/include -I$(H2PACK_INSTALL_DIR)/include
-CFLAGS  = $(INCS) -Wall -g -std=gnu11 -O3 -fPIC $(DEFS)
+INCS    = -I$(SIMINT_INSTALL_DIR)/include
+CFLAGS  = $(INCS) -Wall -g -std=gnu11 -O2 -fPIC $(DEFS)
 
 ifeq ($(shell $(CC) --version 2>&1 | grep -c "icc"), 1)
 AR      = xiar rcs

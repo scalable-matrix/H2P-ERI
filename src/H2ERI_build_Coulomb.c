@@ -5,12 +5,9 @@
 
 #include <omp.h>
 
-#include "H2Pack_matvec.h"
-#include "H2Pack_utils.h"
 #include "H2ERI_typedef.h"
 #include "H2ERI_build_Coulomb.h"
 #include "H2ERI_matvec.h"
-#include "utils.h"  // In H2Pack
 
 // "Uncontract" the density matrix according to SSP and unroll 
 // the result to a column for H2 matvec.

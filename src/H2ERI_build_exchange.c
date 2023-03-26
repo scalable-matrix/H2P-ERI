@@ -5,12 +5,11 @@
 
 #include <omp.h>
 
-#include "H2Pack_matvec.h"
-#include "H2Pack_utils.h"
 #include "H2ERI_typedef.h"
+#include "H2ERI_matvec.h"
 #include "H2ERI_build_exchange.h"
 #include "H2ERI_utils.h"
-#include "utils.h"  // In H2Pack
+#include "H2ERI_aux_structs.h"
 
 struct Kmat_workbuf
 {
@@ -31,25 +30,25 @@ struct Kmat_workbuf
     int    nvec;                // Current matmul output matrix number of columns, == N_nbf * Q_nbf
     int    *MN_bfp_sidx;        // Size h2eri->nshell+1, indices of each bra-side shell pair's first basis function pair
     int    *row_idx;            // Size h2eri->{nshell * max_shell_nbf^2}, H2 matvec row indices
-    int    *row_leaf_nodes;     // Size h2pack->n_leaf_node, row subtree leaf nodes
-    int    *row_node_flag;      // Size h2pack->n_node, mark if a node in h2pack is in row subtree
+    int    *row_leaf_nodes;     // Size h2eri->n_leaf_node, row subtree leaf nodes
+    int    *row_node_flag;      // Size h2eri->n_node, mark if a node in h2eri is in row subtree
     int    *row_idx_ascend;     // Size h2eri->{nshell * max_shell_nbf^2}, row_idx sorted in ascending
     int    *row_idx_pmt;        // Size h2eri->{nshell * max_shell_nbf^2}, original indices of row_idx_ascend
-    int    *vec_out_sidx;       // Size h2pack->n_node+1, indices of each node's vec_out_idx
+    int    *vec_out_sidx;       // Size h2eri->n_node+1, indices of each node's vec_out_idx
     int    *P_list;             // Size h2eri->nshell, list of significant P shells
     int    *P_idx;              // Size h2eri->nshell, indices of P_list[i] in H2ERI_build_exchange->plist
     int    *col_idx;            // Size h2eri->{nshell * max_shell_nbf^2}, H2 matvec column indices
-    int    *col_leaf_nodes;     // Size h2pack->n_leaf_node, column subtree leaf nodes
-    int    *col_node_flag;      // Size h2pack->n_node, mark if a node in h2pack is in column subtree
+    int    *col_leaf_nodes;     // Size h2eri->n_leaf_node, column subtree leaf nodes
+    int    *col_node_flag;      // Size h2eri->n_node, mark if a node in h2eri is in column subtree
     int    *col_idx_pmt;        // Size h2eri->{nshell * max_shell_nbf^2}, original indices of row_idx
     int    *col_idx_ipmt;       // Size h2eri->{nshell * max_shell_nbf^2}, inverse function of col_idx_pmt
-    int    *nvi_nnz_row_sidx;   // Size h2pack->n_node+1, indices of each node's nvi_nnz_row_idx
-    int    *nvo_nnz_row_sidx;   // Size h2pack->n_node+1, indices of each node's nvo_nnz_row_idx
-    int    *nvi_nnz_sidx;       // Size h2pack->n_node+1, indices of each node's node_vec_in 
-    int    *nvo_nnz_sidx;       // Size h2pack->n_node+1, indices of each node's node_vec_out
-    int    *y0_sidx;            // Size h2pack->n_node+1, indices of each node's y0
-    int    *y1_sidx;            // Size h2pack->n_node+1, indices of each node's y1
-    int    *tmp_arr;            // Size h2pack->max_leaf_points, temporary array
+    int    *nvi_nnz_row_sidx;   // Size h2eri->n_node+1, indices of each node's nvi_nnz_row_idx
+    int    *nvo_nnz_row_sidx;   // Size h2eri->n_node+1, indices of each node's nvo_nnz_row_idx
+    int    *nvi_nnz_sidx;       // Size h2eri->n_node+1, indices of each node's node_vec_in 
+    int    *nvo_nnz_sidx;       // Size h2eri->n_node+1, indices of each node's node_vec_out
+    int    *y0_sidx;            // Size h2eri->n_node+1, indices of each node's y0
+    int    *y1_sidx;            // Size h2eri->n_node+1, indices of each node's y1
+    int    *tmp_arr;            // Size h2eri->max_leaf_points, temporary array
     int    *int_buffer;         // == all int* arrays above vec_out_idx, to reduce memory fragments 
     int    *vec_out_idx;        // Size unknown, mapping from each node's nvo_nnz to out_vec
     int    *nvi_nnz_row_idx;    // Size unknown, non-zero row indices of each node's input vectors
@@ -79,12 +78,12 @@ typedef enum
 // Initialize each thread's K mat build work buffer
 void H2ERI_exchange_workbuf_init(H2ERI_p h2eri)
 {
-    int nshell          = h2eri->nshell;
-    int max_shell_nbf   = h2eri->max_shell_nbf;
-    int n_thread        = h2eri->h2pack->n_thread;
-    int n_node          = h2eri->h2pack->n_node;
-    int n_leaf_node     = h2eri->h2pack->n_leaf_node;
-    int num_sp_bfp      = h2eri->num_sp_bfp;
+    int nshell        = h2eri->nshell;
+    int max_shell_nbf = h2eri->max_shell_nbf;
+    int n_thread      = h2eri->n_thread;
+    int n_node        = h2eri->n_node;
+    int n_leaf_node   = h2eri->n_leaf_node;
+    int num_sp_bfp    = h2eri->num_sp_bfp;
     Kmat_workbuf_p *thread_Kmat_workbuf = (Kmat_workbuf_p *) malloc(sizeof(Kmat_workbuf_p) * n_thread);
     #pragma omp parallel num_threads(n_thread)
     {
@@ -173,7 +172,7 @@ void H2ERI_exchange_workbuf_init(H2ERI_p h2eri)
 // Free each thread's K mat build work buffer
 void H2ERI_exchange_workbuf_free(H2ERI_p h2eri)
 {
-    int n_thread = h2eri->h2pack->n_thread;
+    int n_thread = h2eri->n_thread;
     Kmat_workbuf_p *thread_Kmat_workbuf = (Kmat_workbuf_p *) h2eri->thread_Kmat_workbuf;
     for (int i = 0; i < n_thread; i++)
     {
@@ -192,18 +191,18 @@ void H2ERI_exchange_workbuf_free(H2ERI_p h2eri)
 // Find the minimal subtree that covers the given point indices
 // idx must be in ascending order
 static void H2ERI_find_minimal_cover_subtree(
-    H2Pack_p h2pack, const int *idx, const int idx_len, 
+    H2ERI_p h2eri, const int *idx, const int idx_len, 
     int *st_n_leaf_node_, int *st_leaf_nodes, int *st_node_flag, int *st_max_level_
 )
 {
-    int n_leaf_node   = h2pack->n_leaf_node;
-    int n_node        = h2pack->n_node;
-    int max_level     = h2pack->max_level;
-    int *parent       = h2pack->parent;
-    int *leaf_nodes   = h2pack->height_nodes;
-    int *mat_cluster  = h2pack->mat_cluster;
-    int *level_n_node = h2pack->level_n_node;
-    int *level_nodes  = h2pack->level_nodes;
+    int n_leaf_node   = h2eri->n_leaf_node;
+    int n_node        = h2eri->n_node;
+    int max_level     = h2eri->max_level;
+    int *parent       = h2eri->parent;
+    int *leaf_nodes   = h2eri->height_nodes;
+    int *mat_cluster  = h2eri->mat_cluster;
+    int *level_n_node = h2eri->level_n_node;
+    int *level_nodes  = h2eri->level_nodes;
 
     // Find all leaf nodes in the minimal cover subtree
     int st_n_leaf_node = 0;
@@ -326,18 +325,18 @@ static void H2ERI_exchange_workbuf_update_MN_list(
         row_idx_ascend[i] = row_idx[i];
         row_idx_pmt[i]    = i;
     }
-    H2P_qsort_int_key_val(row_idx_ascend, row_idx_pmt, 0, row_idx_len - 1);
+    H2E_qsort_int_kv_ascend(row_idx_ascend, row_idx_pmt, 0, row_idx_len - 1);
     H2ERI_find_minimal_cover_subtree(
-        h2eri->h2pack, row_idx_ascend, row_idx_len, 
+        h2eri, row_idx_ascend, row_idx_len, 
         &workbuf->row_n_leaf_node, workbuf->row_leaf_nodes, 
         workbuf->row_node_flag, &workbuf->row_max_level
     );
 
     // Calculate the sizes and offsets of vec_out and nvo_nnz_row
-    int n_node            = h2eri->h2pack->n_node;
+    int n_node            = h2eri->n_node;
     int row_n_leaf_node   = workbuf->row_n_leaf_node;
     int vec_out_idx_size  = 0;
-    int *mat_cluster      = h2eri->h2pack->mat_cluster;
+    int *mat_cluster      = h2eri->mat_cluster;
     int *row_leaf_nodes   = workbuf->row_leaf_nodes;
     int *vec_out_sidx     = workbuf->vec_out_sidx;
     int *nvo_nnz_row_sidx = workbuf->nvo_nnz_row_sidx;
@@ -450,19 +449,19 @@ static void H2ERI_exchange_workbuf_update_PQ_list(
     int *col_idx_pmt  = workbuf->col_idx_pmt;
     int *col_idx_ipmt = workbuf->col_idx_ipmt;
     for (int i = 0; i < col_idx_len; i++) col_idx_pmt[i] = i;
-    H2P_qsort_int_key_val(col_idx, col_idx_pmt, 0, col_idx_len - 1);
+    H2E_qsort_int_kv_ascend(col_idx, col_idx_pmt, 0, col_idx_len - 1);
     for (int i = 0; i < col_idx_len; i++) col_idx_ipmt[col_idx_pmt[i]] = i;
     H2ERI_find_minimal_cover_subtree(
-        h2eri->h2pack, col_idx, col_idx_len, 
+        h2eri, col_idx, col_idx_len, 
         &workbuf->col_n_leaf_node, workbuf->col_leaf_nodes, 
         workbuf->col_node_flag, &workbuf->col_max_level
     );
 
     // Calculate the sizes and offsets of nvi_nnz_row
-    int n_node            = h2eri->h2pack->n_node;
+    int n_node            = h2eri->n_node;
     int col_n_leaf_node   = workbuf->col_n_leaf_node;
     int nvi_nnz_ridx_size = 0;
-    int *mat_cluster      = h2eri->h2pack->mat_cluster;
+    int *mat_cluster      = h2eri->mat_cluster;
     int *col_leaf_nodes   = workbuf->col_leaf_nodes;
     int *nvi_nnz_row_sidx = workbuf->nvi_nnz_row_sidx;
     memset(nvi_nnz_row_sidx, 0, sizeof(int) * (n_node + 1));
@@ -513,9 +512,9 @@ static void H2ERI_exchange_workbuf_alloc_dbl_buffer(
     const int num_M, const int *M_list
 )
 {
-    int n_node = h2eri->h2pack->n_node;
+    int n_node = h2eri->n_node;
     int *shell_bf_sidx = h2eri->shell_bf_sidx;
-    int *mat_cluster   = h2eri->h2pack->mat_cluster;
+    int *mat_cluster   = h2eri->mat_cluster;
 
     int N_nbf = shell_bf_sidx[N + 1] - shell_bf_sidx[N];
     int Q_nbf = shell_bf_sidx[Q + 1] - shell_bf_sidx[Q];
@@ -553,7 +552,7 @@ static void H2ERI_exchange_workbuf_alloc_dbl_buffer(
     int *nvo_nnz_sidx     = workbuf->nvo_nnz_sidx;
     int *nvi_nnz_row_sidx = workbuf->nvi_nnz_row_sidx;
     int *nvo_nnz_row_sidx = workbuf->nvo_nnz_row_sidx;
-    for (int i = 0; i <= h2eri->h2pack->n_node; i++)
+    for (int i = 0; i <= h2eri->n_node; i++)
     {
         nvi_nnz_sidx[i] = nvi_nnz_row_sidx[i] * nvec;
         nvo_nnz_sidx[i] = nvo_nnz_row_sidx[i] * nvec;
@@ -563,7 +562,7 @@ static void H2ERI_exchange_workbuf_alloc_dbl_buffer(
     int y0_size = 0;
     int *col_node_flag = workbuf->col_node_flag;
     int *y0_sidx = workbuf->y0_sidx;
-    H2P_dense_mat_p *U = h2eri->h2pack->U;
+    H2E_dense_mat_p *U = h2eri->U;
     y0_sidx[0] = 0;
     for (int i = 0; i < n_node; i++)
     {
@@ -663,7 +662,7 @@ static void H2ERI_build_exchange_gather_vec_in(
     // Copy data from vec_in to nvi_nnz
     int    col_idx_len     = workbuf->col_idx_len;
     int    col_n_leaf_node = workbuf->col_n_leaf_node;
-    int    *mat_cluster    = h2eri->h2pack->mat_cluster;
+    int    *mat_cluster    = h2eri->mat_cluster;
     int    *col_leaf_nodes = workbuf->col_leaf_nodes;
     int    *col_idx        = workbuf->col_idx;
     int    *nvi_nnz_sidx   = workbuf->nvi_nnz_sidx;
@@ -867,7 +866,7 @@ static void H2ERI_copy_submatrix(
 // Perform matmul for a sub-matrix of B or D block blk which might 
 // be a dense block or a low-rank approximation blk = U * V
 static void H2ERI_BD_blk_submat_matmul(
-    const int trans_blk, H2P_dense_mat_p blk, H2P_dense_mat_p tmp_mat,
+    const int trans_blk, H2E_dense_mat_p blk, H2E_dense_mat_p tmp_mat,
     int *tmp_idx, const double *mat_in, double *mat_out, const int nvec,
     const int submat_nrow, const int *submat_row_idx, 
     const int submat_ncol, const int *submat_col_idx
@@ -877,7 +876,7 @@ static void H2ERI_BD_blk_submat_matmul(
     {
         if (trans_blk == 0)
         {
-            H2P_dense_mat_resize(tmp_mat, submat_nrow, submat_ncol);
+            H2E_dense_mat_resize(tmp_mat, submat_nrow, submat_ncol);
             H2ERI_copy_submatrix(
                 blk->data, blk->ld, blk->ncol, tmp_mat->data, tmp_mat->ld, 
                 submat_nrow, submat_row_idx, submat_ncol, submat_col_idx
@@ -887,7 +886,7 @@ static void H2ERI_BD_blk_submat_matmul(
                 1.0, tmp_mat->data, tmp_mat->ld, mat_in, nvec, 1.0, mat_out, nvec
             );
         } else {
-            H2P_dense_mat_resize(tmp_mat, submat_ncol, submat_nrow);
+            H2E_dense_mat_resize(tmp_mat, submat_ncol, submat_nrow);
             H2ERI_copy_submatrix(
                 blk->data, blk->ld, blk->ncol, tmp_mat->data, tmp_mat->ld, 
                 submat_ncol, submat_col_idx, submat_nrow, submat_row_idx
@@ -911,7 +910,7 @@ static void H2ERI_BD_blk_submat_matmul(
             int tmp_mat_size = blk_rank * nvec;      // tmp_v
             tmp_mat_size += blk_rank * submat_ncol;  // Sub-matrix of V
             tmp_mat_size += submat_nrow * blk_rank;  // Sub-matrix of U
-            H2P_dense_mat_resize(tmp_mat, blk_rank, nvec);
+            H2E_dense_mat_resize(tmp_mat, blk_rank, nvec);
             double *tmp_v = tmp_mat->data;
             double *VT_submat = tmp_v + blk_rank * nvec;
             double *U_submat  = VT_submat + blk_rank * submat_ncol;
@@ -939,7 +938,7 @@ static void H2ERI_BD_blk_submat_matmul(
             tmp_mat_size += submat_ncol * blk_rank;  // Sub-matrix of U
             tmp_mat_size += blk_rank * submat_nrow;  // Sub-matrix of V
             
-            H2P_dense_mat_resize(tmp_mat, blk_rank, nvec);
+            H2E_dense_mat_resize(tmp_mat, blk_rank, nvec);
             double *tmp_v = tmp_mat->data;
             double *U_submat  = tmp_v + blk_rank * nvec;
             double *VT_submat = U_submat + submat_ncol * blk_rank;
@@ -968,7 +967,7 @@ static void H2ERI_BD_blk_submat_matmul(
 // Perform matmul for a B or D block blk which might be a dense block 
 // or a low-rank approximation blk = U * V
 static void H2ERI_BD_blk_matmul(
-    const int trans_blk, H2P_dense_mat_p blk, H2P_dense_mat_p tmp_v,
+    const int trans_blk, H2E_dense_mat_p blk, H2E_dense_mat_p tmp_v,
     const double *mat_in, double *mat_out, const int nvec
 )
 {
@@ -993,7 +992,7 @@ static void H2ERI_BD_blk_matmul(
         // U: blk->nrow * blk_rank
         // V: blk_rank  * blk->ncol
         // Note: V^T instead of V is stored
-        H2P_dense_mat_resize(tmp_v, blk_rank, nvec);
+        H2E_dense_mat_resize(tmp_v, blk_rank, nvec);
         if (trans_blk == 0)
         {
             // mat_out = (U * V) * mat_in = U * (V * mat_in)
@@ -1021,27 +1020,26 @@ static void H2ERI_BD_blk_matmul(
 
 static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p workbuf, const int tid)
 {
-    H2Pack_p h2pack = h2eri->h2pack;
-    int n_node         = h2pack->n_node;
-    int max_child      = h2pack->max_child;
-    int n_leaf_node    = h2pack->n_leaf_node;
-    int n_r_adm_pair   = h2pack->n_r_adm_pair;
-    int n_r_inadm_pair = h2pack->n_r_inadm_pair;
-    int *children      = h2pack->children;
-    int *n_child       = h2pack->n_child;
-    int *level_n_node  = h2pack->level_n_node;
-    int *level_nodes   = h2pack->level_nodes;
-    int *node_level    = h2pack->node_level;
-    int *leaf_nodes    = h2pack->height_nodes;
-    int *r_adm_pairs   = h2pack->r_adm_pairs;
-    int *r_inadm_pairs = h2pack->r_inadm_pairs;
+    int n_node         = h2eri->n_node;
+    int max_child      = h2eri->max_child;
+    int n_leaf_node    = h2eri->n_leaf_node;
+    int n_r_adm_pair   = h2eri->n_r_adm_pair;
+    int n_r_inadm_pair = h2eri->n_r_inadm_pair;
+    int *children      = h2eri->children;
+    int *n_child       = h2eri->n_child;
+    int *level_n_node  = h2eri->level_n_node;
+    int *level_nodes   = h2eri->level_nodes;
+    int *node_level    = h2eri->node_level;
+    int *leaf_nodes    = h2eri->height_nodes;
+    int *r_adm_pairs   = h2eri->r_adm_pairs;
+    int *r_inadm_pairs = h2eri->r_inadm_pairs;
 
-    H2P_dense_mat_p  *U        = h2pack->U;
-    H2P_dense_mat_p  *c_B_blks = h2eri->c_B_blks;
-    H2P_dense_mat_p  *c_D_blks = h2eri->c_D_blks;
-    H2P_dense_mat_p  tmp_mat   = h2pack->tb[tid]->mat0;
-    H2P_int_vec_p    tmp_idx0  = h2pack->tb[tid]->idx0;
-    H2P_int_vec_p    tmp_idx1  = h2pack->tb[tid]->idx1;
+    H2E_dense_mat_p  *U        = h2eri->U;
+    H2E_dense_mat_p  *c_B_blks = h2eri->c_B_blks;
+    H2E_dense_mat_p  *c_D_blks = h2eri->c_D_blks;
+    H2E_dense_mat_p  tmp_mat   = h2eri->thread_buffs[tid]->mat0;
+    H2E_int_vec_p    tmp_idx0  = h2eri->thread_buffs[tid]->idx0;
+    H2E_int_vec_p    tmp_idx1  = h2eri->thread_buffs[tid]->idx1;
 
     int *node_adm_pairs        = h2eri->node_adm_pairs;
     int *node_adm_pairs_sidx   = h2eri->node_adm_pairs_sidx;
@@ -1067,12 +1065,12 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
     double *y0                 = workbuf->y0;
     double *y1                 = workbuf->y1;
 
-    int *B_p2i_rowptr = h2pack->B_p2i_rowptr;
-    int *B_p2i_colidx = h2pack->B_p2i_colidx;
-    int *B_p2i_val    = h2pack->B_p2i_val;
-    int *D_p2i_rowptr = h2pack->D_p2i_rowptr;
-    int *D_p2i_colidx = h2pack->D_p2i_colidx;
-    int *D_p2i_val    = h2pack->D_p2i_val;
+    int *B_p2i_rowptr = h2eri->B_p2i_rowptr;
+    int *B_p2i_colidx = h2eri->B_p2i_colidx;
+    int *B_p2i_val    = h2eri->B_p2i_val;
+    int *D_p2i_rowptr = h2eri->D_p2i_rowptr;
+    int *D_p2i_colidx = h2eri->D_p2i_colidx;
+    int *D_p2i_val    = h2eri->D_p2i_val;
 
     double st, et;
     double *timers = workbuf->timers;
@@ -1099,8 +1097,8 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
         }
         if ((cnt > 0) && (level0 < bwd_minlvl)) bwd_minlvl = level0;
     }
-    if (fwd_minlvl < h2pack->min_adm_level) fwd_minlvl = h2pack->min_adm_level;
-    if (bwd_minlvl < h2pack->min_adm_level) bwd_minlvl = h2pack->min_adm_level;
+    if (fwd_minlvl < h2eri->min_adm_level) fwd_minlvl = h2eri->min_adm_level;
+    if (bwd_minlvl < h2eri->min_adm_level) bwd_minlvl = h2eri->min_adm_level;
     int only_Dij = 0;
     if (col_max_level < fwd_minlvl) only_Dij = 1;
     if (row_max_level < bwd_minlvl) only_Dij = 1;
@@ -1122,7 +1120,7 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
             int child_cnt = 0;
             int U_srow = 0;
             int n_child_node = n_child[node];
-            H2P_dense_mat_p U_node = U[node];
+            H2E_dense_mat_p U_node = U[node];
             double *y0_node = y0 + y0_sidx[node];
             int *node_children = children + node * max_child;
             for (int k = 0; k < n_child_node; k++)
@@ -1146,7 +1144,7 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
                 double *B = nvi_nnz + nvi_nnz_sidx[node];
                 int num_nnz_row = nvi_nnz_row_sidx[node + 1] - nvi_nnz_row_sidx[node];
                 int *nnz_row = nvi_nnz_row_idx + nvi_nnz_row_sidx[node];
-                H2P_dense_mat_resize(tmp_mat, num_nnz_row, U_node->ncol);
+                H2E_dense_mat_resize(tmp_mat, num_nnz_row, U_node->ncol);
                 for (int l = 0; l < num_nnz_row; l++)
                 {
                     double *src = U_node->data + nnz_row[l] * U_node->ncol;
@@ -1177,7 +1175,7 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
         int *node0_nnz_row_idx = nvo_nnz_row_idx + nvo_nnz_row_sidx[node0];
         
         int y1_node0_nrow = (y1_sidx[node0 + 1] - y1_sidx[node0]) / nvec;
-        H2P_int_vec_set_capacity(tmp_idx0, y1_node0_nrow);
+        H2E_int_vec_set_capacity(tmp_idx0, y1_node0_nrow);
         for (int k = 0; k < y1_node0_nrow; k++)
             tmp_idx0->data[k] = k;
         tmp_idx0->length = y1_node0_nrow;
@@ -1191,15 +1189,15 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
             int *node1_nnz_row_idx = nvi_nnz_row_idx + nvi_nnz_row_sidx[node1];
 
             int y0_node1_nrow = (y0_sidx[node1 + 1] - y0_sidx[node1]) / nvec;
-            H2P_int_vec_set_capacity(tmp_idx1, y0_node1_nrow);
+            H2E_int_vec_set_capacity(tmp_idx1, y0_node1_nrow);
             for (int k = 0; k < y0_node1_nrow; k++)
                 tmp_idx1->data[k] = k;
             tmp_idx1->length = y0_node1_nrow;
 
-            int pair_idx_ij = H2P_get_int_CSR_elem(B_p2i_rowptr, B_p2i_colidx, B_p2i_val, node0, node1);
+            int pair_idx_ij = H2E_get_int_CSR_elem(B_p2i_rowptr, B_p2i_colidx, B_p2i_val, node0, node1);
             ASSERT_PRINTF(pair_idx_ij != 0, "Cannot find Bij for i = %d, j = %d\n", node0, node1);
             int trans_blk;
-            H2P_dense_mat_p Bi;
+            H2E_dense_mat_p Bi;
             if (pair_idx_ij > 0)
             {
                 trans_blk = 0;
@@ -1267,7 +1265,7 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
             int child_cnt = 0;
             int U_srow = 0;
             int n_child_node = n_child[node];
-            H2P_dense_mat_p U_node = U[node];
+            H2E_dense_mat_p U_node = U[node];
             double *y1_node = y1 + y1_sidx[node];
             int *node_children = children + node * max_child;
             for (int k = 0; k < n_child_node; k++)
@@ -1291,7 +1289,7 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
                 double *C = nvo_nnz + nvo_nnz_sidx[node];
                 int num_nnz_row = nvo_nnz_row_sidx[node + 1] - nvo_nnz_row_sidx[node];
                 int *nnz_row = nvo_nnz_row_idx + nvo_nnz_row_sidx[node];
-                H2P_dense_mat_resize(tmp_mat, num_nnz_row, U_node->ncol);
+                H2E_dense_mat_resize(tmp_mat, num_nnz_row, U_node->ncol);
                 for (int l = 0; l < num_nnz_row; l++)
                 {
                     double *src = U_node->data + nnz_row[l] * U_node->ncol;
@@ -1329,10 +1327,10 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
             int node1_num_nnz_row  = nvi_nnz_row_sidx[node1 + 1] - nvi_nnz_row_sidx[node1];
             int *node1_nnz_row_idx = nvi_nnz_row_idx + nvi_nnz_row_sidx[node1];
 
-            int pair_idx_ij = H2P_get_int_CSR_elem(D_p2i_rowptr, D_p2i_colidx, D_p2i_val, node0, node1);
+            int pair_idx_ij = H2E_get_int_CSR_elem(D_p2i_rowptr, D_p2i_colidx, D_p2i_val, node0, node1);
             ASSERT_PRINTF(pair_idx_ij != 0, "Cannot find Dij for i = %d, j = %d\n", node0, node1);
             int trans_blk;
-            H2P_dense_mat_p Di;
+            H2E_dense_mat_p Di;
             if (pair_idx_ij > 0)
             {
                 trans_blk = 0;
@@ -1357,13 +1355,13 @@ static void H2ERI_build_exchange_H2_matmul_partial(H2ERI_p h2eri, Kmat_workbuf_p
 // Build the exchange matrix with the density matrix and H2 representation of the ERI tensor
 void H2ERI_build_exchange(H2ERI_p h2eri, const double *den_mat, double *K_mat)
 {
-    ASSERT_PRINTF(h2eri->h2pack->BD_JIT == 0, "H2ERI_build_exchange does not support BD JIT build\n");
+    ASSERT_PRINTF(h2eri->BD_JIT == 0, "H2ERI_build_exchange does not support BD JIT build\n");
     
     H2ERI_build_exchange_dlist(h2eri, den_mat);
 
     int num_bf      = h2eri->num_bf;
     int nshell      = h2eri->nshell;
-    int n_thread    = h2eri->h2pack->n_thread;
+    int n_thread    = h2eri->n_thread;
     int *plist      = h2eri->plist;
     int *plist_idx  = h2eri->plist_idx;
     int *plist_sidx = h2eri->plist_sidx;
@@ -1442,11 +1440,11 @@ void H2ERI_build_exchange(H2ERI_p h2eri, const double *den_mat, double *K_mat)
             if (timer_ij > build_K_timers[i]) build_K_timers[i] = timer_ij;
         }
     }
-    double *h2pack_timers = h2eri->h2pack->timers;
-    h2pack_timers[MV_VOP_TIMER_IDX] += build_K_timers[BUILD_K_AUX_TIMER_IDX];
-    h2pack_timers[MV_FWD_TIMER_IDX] += build_K_timers[BUILD_K_MM_FWD_TIMER_IDX];
-    h2pack_timers[MV_MID_TIMER_IDX] += build_K_timers[BUILD_K_MM_MID_TIMER_IDX];
-    h2pack_timers[MV_BWD_TIMER_IDX] += build_K_timers[BUILD_K_MM_BWD_TIMER_IDX];
-    h2pack_timers[MV_DEN_TIMER_IDX] += build_K_timers[BUILD_K_MM_DEN_TIMER_IDX];
-    h2eri->h2pack->n_matvec++;
+    double *h2eri_timers = h2eri->timers;
+    h2eri_timers[MV_VOP_TIMER_IDX] += build_K_timers[BUILD_K_AUX_TIMER_IDX];
+    h2eri_timers[MV_FWD_TIMER_IDX] += build_K_timers[BUILD_K_MM_FWD_TIMER_IDX];
+    h2eri_timers[MV_MID_TIMER_IDX] += build_K_timers[BUILD_K_MM_MID_TIMER_IDX];
+    h2eri_timers[MV_BWD_TIMER_IDX] += build_K_timers[BUILD_K_MM_BWD_TIMER_IDX];
+    h2eri_timers[MV_DEN_TIMER_IDX] += build_K_timers[BUILD_K_MM_DEN_TIMER_IDX];
+    h2eri->n_matvec++;
 }

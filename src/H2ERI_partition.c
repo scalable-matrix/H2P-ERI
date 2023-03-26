@@ -6,9 +6,11 @@
 
 #include "CMS.h"
 #include "H2ERI_typedef.h"
-#include "H2Pack_partition.h"
-#include "H2Pack_utils.h"
+#include "H2ERI_partition.h"
+#include "H2ERI_partition_points.h"
+#include "H2ERI_utils.h"
 #include "H2ERI_build_exchange.h"
+#include "H2ERI_aux_structs.h"
 
 // Partition screened shell pair centers (as points) for H2 tree
 // Input parameters:
@@ -20,7 +22,6 @@
 //                      will use 300.
 //   max_leaf_size    : Maximum size of a leaf node's box. 
 // Output parameter:
-//   h2eri->h2pack    : H2Pack structure with point partitioning info
 //   h2eri->sp        : Array, size 2 * num_sp, sorted SSP
 //   h2eri->sp_center : Array, size 3 * num_sp, sorted centers of SSP
 //   h2eri->sp_extent : Array, size num_sp, sorted extents of SSP
@@ -31,7 +32,7 @@ void H2ERI_partition_sp_centers(H2ERI_p h2eri, int max_leaf_points, double max_l
     double *sp_center = h2eri->sp_center;
     if (max_leaf_points <= 0)   max_leaf_points = 300;
     if (max_leaf_size   <= 0.0) max_leaf_size   = 1.0;
-    // Manually set the kernel matrix size for h2eri->h2pack->tb allocation.
+    // Manually set the kernel matrix size for h2eri->tb allocation.
     shell_t *sp_shells = h2eri->sp_shells;
     int num_sp_bfp = 0;
     for (int i = 0; i < num_sp; i++)
@@ -40,17 +41,16 @@ void H2ERI_partition_sp_centers(H2ERI_p h2eri, int max_leaf_points, double max_l
         int am1 = sp_shells[i + num_sp].am;
         num_sp_bfp += NCART(am0) * NCART(am1);
     }
-    h2eri->h2pack->krnl_mat_size = num_sp_bfp; 
-    h2eri->h2pack->is_H2ERI = 1;  // Tell H2Pack not to set krnl_mat_size and mat_cluster
-    H2P_partition_points(
-        h2eri->h2pack, num_sp, sp_center, 
+    h2eri->krnl_mat_size = num_sp_bfp; 
+    H2E_partition_points(
+        h2eri, num_sp, sp_center, 
         max_leaf_points, max_leaf_size
     );
-    memcpy(sp_center, h2eri->h2pack->coord, sizeof(double) * 3 * num_sp);
+    memcpy(sp_center, h2eri->coord, sizeof(double) * 3 * num_sp);
     
     // 2. Permute the screened shell pairs and their extents according to 
     // the permutation of their center coordinate
-    int *coord_idx = h2eri->h2pack->coord_idx;
+    int *coord_idx = h2eri->coord_idx;
     double  *sp_extent    = h2eri->sp_extent;
     int     *sp_shell_idx = h2eri->sp_shell_idx;
     shell_t *sp_shells_new    = (shell_t *) malloc(sizeof(shell_t) * num_sp * 2);
@@ -144,25 +144,23 @@ void H2ERI_calc_bf_bfp_info(H2ERI_p h2eri)
 
 // Calculate the max extent of shell pairs in each H2 box
 // Input parameters:
-//   h2eri->h2pack    : H2 tree partitioning info
 //   h2eri->num_sp    : Number of SSP
 //   h2eri->sp_center : Array, size 3 * num_sp, centers of SSP, sorted
 //   h2eri->sp_extent : Array, size num_sp, extents of SSP, sorted
 // Output parameter:
-//   h2eri->box_extent : Array, size h2pack->n_node, extent of each H2 node box
+//   h2eri->box_extent : Array, size h2eri->n_node, extent of each H2 node box
 void H2ERI_calc_box_extent(H2ERI_p h2eri)
 {
-    H2Pack_p h2pack = h2eri->h2pack;
-    int    n_node        = h2pack->n_node;
-    int    max_level     = h2pack->max_level;
-    int    max_child     = h2pack->max_child;
-    int    n_leaf_node   = h2pack->n_leaf_node;
-    int    *pt_cluster   = h2pack->pt_cluster;
-    int    *children     = h2pack->children;
-    int    *n_child      = h2pack->n_child;
-    int    *level_nodes  = h2pack->level_nodes;
-    int    *level_n_node = h2pack->level_n_node;
-    double *enbox        = h2pack->enbox;
+    int    n_node        = h2eri->n_node;
+    int    max_level     = h2eri->max_level;
+    int    max_child     = h2eri->max_child;
+    int    n_leaf_node   = h2eri->n_leaf_node;
+    int    *pt_cluster   = h2eri->pt_cluster;
+    int    *children     = h2eri->children;
+    int    *n_child      = h2eri->n_child;
+    int    *level_nodes  = h2eri->level_nodes;
+    int    *level_n_node = h2eri->level_n_node;
+    double *enbox        = h2eri->enbox;
     int    num_sp        = h2eri->num_sp;
     double *sp_center    = h2eri->sp_center;
     double *sp_extent    = h2eri->sp_extent;
@@ -229,19 +227,17 @@ void H2ERI_calc_box_extent(H2ERI_p h2eri)
 
 // Calculate the matvec cluster for H2 nodes
 // Input parameters:
-//   h2eri->h2pack      : H2 tree partitioning info
 //   h2eri->sp_bfp_sidx : Array, size num_sp+1, indices of each SSP first basis function pair
 // Output parameter:
-//   h2eri->h2pack->mat_cluster : Array, size h2pack->n_node * 2, matvec cluster for H2 nodes
+//   h2eri->mat_cluster : Array, size h2eri->n_node * 2, matvec cluster for H2 nodes
 void H2ERI_calc_mat_cluster(H2ERI_p h2eri)
 {
-    H2Pack_p h2pack  = h2eri->h2pack;
-    int n_node       = h2pack->n_node;
-    int max_child    = h2pack->max_child;
-    int *pt_cluster  = h2pack->pt_cluster;
-    int *children    = h2pack->children;
-    int *n_child     = h2pack->n_child;
-    int *mat_cluster = h2pack->mat_cluster;
+    int n_node       = h2eri->n_node;
+    int max_child    = h2eri->max_child;
+    int *pt_cluster  = h2eri->pt_cluster;
+    int *children    = h2eri->children;
+    int *n_child     = h2eri->n_child;
+    int *mat_cluster = h2eri->mat_cluster;
     int *sp_bfp_sidx = h2eri->sp_bfp_sidx;
     
     int offset = 0;
@@ -269,26 +265,23 @@ void H2ERI_calc_mat_cluster(H2ERI_p h2eri)
 }
 
 // Find each node's admissible and inadmissible pair nodes
-// Input parameter:
-//   h2eri->h2pack : H2 tree partitioning info
 // Output parameters:
 //   h2eri->node_adm_pairs        : Array, size unknown, each node's admissible node pairs
-//   h2eri->node_adm_pairs_sidx   : Array, size h2pack->n_node+1, index of each node's first admissible node pair
+//   h2eri->node_adm_pairs_sidx   : Array, size h2eri->n_node+1, index of each node's first admissible node pair
 //   h2eri->node_inadm_pairs      : Array, size unknown, each node's inadmissible node pairs
-//   h2eri->node_inadm_pairs_sidx : Array, size h2pack->n_node+1, index of each node's first inadmissible node pair
+//   h2eri->node_inadm_pairs_sidx : Array, size h2eri->n_node+1, index of each node's first inadmissible node pair
 void H2ERI_calc_node_adm_inadm_pairs(H2ERI_p h2eri)
 {
-    H2Pack_p h2pack = h2eri->h2pack;
-    int n_node         = h2pack->n_node;
-    int n_node1        = h2pack->n_node + 1;
-    int n_leaf_node    = h2pack->n_leaf_node;
-    int n_r_adm_pair   = h2pack->n_r_adm_pair;
-    int n_r_inadm_pair = h2pack->n_r_inadm_pair;
+    int n_node         = h2eri->n_node;
+    int n_node1        = h2eri->n_node + 1;
+    int n_leaf_node    = h2eri->n_leaf_node;
+    int n_r_adm_pair   = h2eri->n_r_adm_pair;
+    int n_r_inadm_pair = h2eri->n_r_inadm_pair;
     int n_adm_pair     = 2 * n_r_adm_pair;
     int n_inadm_pair   = 2 * n_r_inadm_pair + n_leaf_node;
-    int *r_adm_pairs   = h2pack->r_adm_pairs;
-    int *r_inadm_pairs = h2pack->r_inadm_pairs;
-    int *leaf_nodes    = h2pack->height_nodes;
+    int *r_adm_pairs   = h2eri->r_adm_pairs;
+    int *r_inadm_pairs = h2eri->r_inadm_pairs;
+    int *leaf_nodes    = h2eri->height_nodes;
     int *node_adm_pairs_sidx   = (int *) malloc(sizeof(int) * n_node1);
     int *node_inadm_pairs_sidx = (int *) malloc(sizeof(int) * n_node1);
     int *node_adm_pairs        = (int *) malloc(sizeof(int) * n_adm_pair);
@@ -425,7 +418,7 @@ void H2ERI_build_plist(H2ERI_p h2eri)
     {
         int sidx = plist_sidx[i];
         int len  = plist_sidx[i + 1] - sidx;
-        H2P_qsort_int_key_val(plist + sidx, plist_idx + sidx, 0, len - 1);
+        H2E_qsort_int_kv_ascend(plist + sidx, plist_idx + sidx, 0, len - 1);
     }
 
     h2eri->plist      = plist;
@@ -445,14 +438,17 @@ void H2ERI_partition(H2ERI_p h2eri)
     H2ERI_exchange_workbuf_init(h2eri);
     
     // Initialize thread local Simint buffer
-    int n_thread = h2eri->h2pack->n_thread;
+    int n_thread = h2eri->n_thread;
     h2eri->simint_buffs    = (simint_buff_p*)    malloc(sizeof(simint_buff_p)    * n_thread);
     h2eri->eri_batch_buffs = (eri_batch_buff_p*) malloc(sizeof(eri_batch_buff_p) * n_thread);
+    h2eri->thread_buffs    = (H2E_thread_buf_p*) malloc(sizeof(H2E_thread_buf_p) * n_thread);
     assert(h2eri->simint_buffs    != NULL);
     assert(h2eri->eri_batch_buffs != NULL);
+    assert(h2eri->thread_buffs    != NULL);
     for (int i = 0; i < n_thread; i++)
     {
         CMS_init_Simint_buff(h2eri->max_am, &h2eri->simint_buffs[i]);
         CMS_init_eri_batch_buff(h2eri->max_am, 4, &h2eri->eri_batch_buffs[i]);
+        H2E_thread_buf_init(&h2eri->thread_buffs[i], h2eri->krnl_mat_size);
     }
 }

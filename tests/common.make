@@ -1,15 +1,14 @@
-LIBXC_INSTALL_DIR    = /home/mkurisu/Workspace/libxc/install
+LIBXC_INSTALL_DIR    = /home/keqing/workspace/libxc/install
 H2PERI_INSTALL_DIR   = ..
-SIMINT_INSTALL_DIR   = /home/mkurisu/Workspace/simint/build-avx/install
-YATDFT_INSTALL_DIR   = /home/mkurisu/Workspace/YATDFT
-H2PACK_INSTALL_DIR   = /home/mkurisu/Workspace/H2Pack
-OPENBLAS_INSTALL_DIR = /home/mkurisu/Workspace/OpenBLAS-git/install
+SIMINT_INSTALL_DIR   = /home/keqing/workspace/simint-13May2021/build-icc20-avx/install
+YATDFT_INSTALL_DIR   = /home/keqing/workspace/YATDFT
+OPENBLAS_INSTALL_DIR = /home/keqing/workspace/OpenBLAS-git/install
 
 DEFS    = 
-INCS    = -I$(H2PERI_INSTALL_DIR)/include -I$(H2PACK_INSTALL_DIR)/include -I$(YATDFT_INSTALL_DIR)/include -I$(SIMINT_INSTALL_DIR)/include
+INCS    = -I$(H2PERI_INSTALL_DIR)/include -I$(YATDFT_INSTALL_DIR)/include -I$(SIMINT_INSTALL_DIR)/include
 CFLAGS  = $(INCS) -Wall -g -std=gnu11 -O3 -fPIC $(DEFS)
 LDFLAGS = -g -O3 -fopenmp
-LIBS    = $(H2PERI_INSTALL_DIR)/lib/libH2PERI.a $(H2PACK_INSTALL_DIR)/lib/libH2Pack.a $(YATDFT_INSTALL_DIR)/lib/libYATDFT.a $(SIMINT_INSTALL_DIR)/lib64/libsimint.a 
+LIBS    = $(H2PERI_INSTALL_DIR)/lib/libH2PERI.a $(YATDFT_INSTALL_DIR)/lib/libYATDFT.a $(SIMINT_INSTALL_DIR)/lib64/libsimint.a 
 
 ifeq ($(shell $(CC) --version 2>&1 | grep -c "icc"), 1)
 CFLAGS  += -fopenmp -xHost
