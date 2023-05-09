@@ -44,8 +44,8 @@ int main(int argc, char **argv)
     
     // 6. Construct the Coulomb matrix and save it to file
     H2ERI_build_Coulomb(h2eri, D_mat, J_mat);  // Warm up
-    h2eri->h2pack->n_matvec = 0;
-    memset(h2eri->h2pack->timers + 4, 0, sizeof(double) * 5);
+    h2eri->n_matvec = 0;
+    memset(h2eri->timers + 4, 0, sizeof(double) * 5);
     for (int k = 0; k < 10; k++)
         H2ERI_build_Coulomb(h2eri, D_mat, J_mat);
     

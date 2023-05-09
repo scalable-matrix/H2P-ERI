@@ -56,8 +56,8 @@ int main(int argc, char **argv)
     
     // Test H2ERI_build_Coulomb() performance after warm-up running
     H2ERI_build_Coulomb(h2eri, TinyDFT->D_mat, TinyDFT->J_mat);
-    h2eri->h2pack->n_matvec = 0;
-    memset(h2eri->h2pack->timers + 4, 0, sizeof(double) * 5);
+    h2eri->n_matvec = 0;
+    memset(h2eri->timers + 4, 0, sizeof(double) * 5);
     st = get_wtime_sec();
     int ntest = 10;
     for (int i = 0; i < ntest; i++)
